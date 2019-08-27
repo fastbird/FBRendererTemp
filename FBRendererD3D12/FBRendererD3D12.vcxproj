@@ -155,13 +155,20 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="ConverterD3D12.h" />
+    <ClInclude Include="d3dx12.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="GPUBuffer.h" />
+    <ClInclude Include="IndexBuffer.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="RendererD3D12.h" />
     <ClInclude Include="Util.h" />
+    <ClInclude Include="VertexBuffer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="GPUBuffer.cpp" />
+    <ClCompile Include="IndexBuffer.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -170,6 +177,7 @@
     </ClCompile>
     <ClCompile Include="RendererD3D12.cpp" />
     <ClCompile Include="Util.cpp" />
+    <ClCompile Include="VertexBuffer.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

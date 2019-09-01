@@ -123,8 +123,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="DataFormat.h" />
     <ClInclude Include="FBRenderer.h" />
+    <ClInclude Include="InputElementDesc.h" />
     <ClInclude Include="IRenderer.h" />
+    <ClInclude Include="IShader.h" />
+    <ClInclude Include="PSO.h" />
+    <ClInclude Include="Types.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FBRenderer.cpp" />

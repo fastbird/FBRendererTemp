@@ -162,6 +162,8 @@
     <ClInclude Include="IndexBuffer.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="RendererD3D12.h" />
+    <ClInclude Include="Shader.h" />
+    <ClInclude Include="UploadBuffer.h" />
     <ClInclude Include="Util.h" />
     <ClInclude Include="VertexBuffer.h" />
   </ItemGroup>
@@ -176,6 +178,8 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="RendererD3D12.cpp" />
+    <ClCompile Include="Shader.cpp" />
+    <ClCompile Include="UploadBuffer.cpp" />
     <ClCompile Include="Util.cpp" />
     <ClCompile Include="VertexBuffer.cpp" />
   </ItemGroup>

@@ -9,3 +9,8 @@ bool IndexBuffer::Initialize(const void* indexData, UINT size, EDataFormat forma
 	Format = Convert(format);
 	return GPUBuffer::Initialize(indexData, size, keepData);
 }
+
+EDataFormat IndexBuffer::GetFormat() const
+{
+	return Convert(Format);
+}

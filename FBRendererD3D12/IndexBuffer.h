@@ -9,6 +9,8 @@ namespace fb
 
 	public:
 		virtual bool Initialize(const void* indexData, UINT size, EDataFormat format, bool keepData) override;
+		virtual UINT GetSize() const override { return Size; }
+		virtual EDataFormat GetFormat() const override;
 
 		D3D12_INDEX_BUFFER_VIEW IndexBufferView() const
 		{

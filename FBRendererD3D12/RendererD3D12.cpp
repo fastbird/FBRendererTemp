@@ -1,6 +1,11 @@
 #include "pch.h"
 #include "RendererD3D12.h"
 #include "Util.h"
+#include "VertexBuffer.h"
+#include "IndexBuffer.h"
+#include "UploadBuffer.h"
+#include "Shader.h"
+#include "ConverterD3D12.h"
 
 using namespace fb;
 using Microsoft::WRL::ComPtr;
@@ -10,11 +15,6 @@ extern "C" {
 	fb::IRenderer* CreateRendererD3D12()
 	{
 		return new RendererD3D12();
-	}
-
-	void DeleteRendererD3D12(fb::IRenderer* renderer)
-	{
-		delete renderer;
 	}
 }
 
@@ -70,10 +70,10 @@ bool RendererD3D12::Initialize(void* windowHandle)
 	return true;
 }
 
-bool RendererD3D12::Finalize()
+void RendererD3D12::Finalize()
 {
 	gRendererD3D12 = nullptr;
-	return true;
+	delete this;
 }
 
 void RendererD3D12::OnResized()
@@ -198,6 +198,13 @@ void RendererD3D12::Draw(float dt)
 	// Specify the buffers we are going to render to.
 	CommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 
+	// *************
+	// TEST CODE
+	CommandList->SetGraphicsRootSignature(RootSignature.Get());
+	ID3D12DescriptorHeap* descriptorHeaps[] = { CbvHeap.Get() };
+	CommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	CommandList->SetGraphicsRootDescriptorTable(0, CbvHeap->GetGPUDescriptorHandleForHeapStart());
+
 	// Indicate a state transition on the resource usage.
 	CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
@@ -217,6 +224,164 @@ void RendererD3D12::Draw(float dt)
 	// done for simplicity.  Later we will show how to organize our rendering code
 	// so we do not have to wait per frame.
 	FlushCommandQueue();
+}
+
+IVertexBuffer* RendererD3D12::CreateVertexBuffer(const void* vertexData, UINT size, UINT stride, bool keepData)
+{
+	auto vb = new VertexBuffer();
+	if (!vb->Initialize(vertexData, size, stride, keepData))
+	{
+		delete vb; vb = nullptr;
+	}
+	return vb;
+}
+
+IIndexBuffer* RendererD3D12::CreateIndexBuffer(const void* indexData, UINT size, EDataFormat format, bool keepData)
+{
+	auto ib = new IndexBuffer();
+	if (!ib->Initialize(indexData, size, format, keepData))
+	{ 
+		delete ib; ib = nullptr;
+	}
+	return ib;
+}
+
+IUploadBuffer* RendererD3D12::CreateUploadBuffer(UINT elementSize, UINT count, bool constantBuffer, CBVHeapType heapType)
+{
+	auto ub = new UploadBuffer();
+	if (!ub->Initialize(elementSize, constantBuffer ? 256 : 0, count))
+	{
+		delete ub;
+		return nullptr;
+	}
+
+	switch (heapType)
+	{
+	case CBVHeapType::Default:
+	{
+		D3D12_GPU_VIRTUAL_ADDRESS cbAddress = ub->Resource->GetGPUVirtualAddress();
+		// Insert offsetting code if necessary.
+
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+		cbvDesc.BufferLocation = cbAddress;
+		cbvDesc.SizeInBytes = ub->ElementSize;
+
+		Device->CreateConstantBufferView(
+			&cbvDesc,
+			CbvHeap->GetCPUDescriptorHandleForHeapStart());
+		break;
+	}
+	}
+	return ub;
+}
+
+PSOID RendererD3D12::CreateGraphicsPipelineState(const FPSODesc& psoDesc)
+{
+	ComPtr<ID3D12PipelineState> pso;
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = Convert(psoDesc);
+	Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pso));
+	PSOs.push_back()
+}
+
+IShader* RendererD3D12::CompileShader(
+	const char* filepath, FShaderMacro* macros, int numMacros, EShaderType shaderType, const char* entryFunctionName)
+{
+	auto shader = new Shader;
+	D3D_SHADER_MACRO* d3dMacros = nullptr;
+	if (numMacros > 0) {
+		d3dMacros = new D3D_SHADER_MACRO[numMacros + 1];
+		for (int i = 0; i < numMacros; ++i) {
+			d3dMacros[i].Name = macros[i].Name;
+			d3dMacros[i].Definition = macros[i].Def;
+		}
+		d3dMacros[numMacros].Name = nullptr;
+		d3dMacros[numMacros].Definition = nullptr;
+	}
+	const char* shaderTarget = nullptr;
+	switch (shaderType) {
+	case EShaderType::PixelShader:
+		shaderTarget = "PS_5_1";
+		break;
+	case EShaderType::VertexShader:
+		shaderTarget = "VS_5_1";
+		break;
+	case EShaderType::GeometryShader:
+		shaderTarget = "GS_5_1";
+		break;
+	case EShaderType::HullShader:
+		shaderTarget = "HS_5_1";
+		break;
+	case EShaderType::DomainShader:
+		shaderTarget = "DS_5_1";
+		break;
+	case EShaderType::ComputeShader:
+		shaderTarget = "CS_5_1";
+		break;
+	}
+	assert(shaderTarget != nullptr);
+	try {
+		shader->ByteCode = fb::CompileShader(
+			AnsiToWString(filepath), d3dMacros, entryFunctionName, shaderTarget);
+	}
+	catch (fb::DxException& ex) {
+		OutputDebugString(ex.ToString().c_str());
+		delete shader; shader = nullptr;
+	}
+	delete[] macros;
+	return shader;
+}
+\EDataFormat RendererD3D12::GetBackBufferFormat() const
+{
+	return Convert(BackBufferFormat);
+}
+
+EDataFormat RendererD3D12::GetDepthStencilFormat() const
+{
+	return Convert(DepthStencilFormat);
+}
+
+int RendererD3D12::GetSampleCount() const
+{
+	return Msaa4xState ? 4 : 1;
+}
+
+int RendererD3D12::GetMsaaQuality() const
+{
+	return Msaa4xQuality;
+}\
+void RendererD3D12::TestCreateRootSignatureForSimpleBox()
+{
+	CD3DX12_ROOT_PARAMETER slotRootParameter[1];
+
+	// Create a single descriptor table of CBVs.
+	CD3DX12_DESCRIPTOR_RANGE cbvTable;
+	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+	slotRootParameter[0].InitAsDescriptorTable(1, &cbvTable);
+
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, slotRootParameter, 0, nullptr,
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ComPtr<ID3DBlob> serializedRootSig = nullptr;
+	ComPtr<ID3DBlob> errorBlob = nullptr;
+	HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+
+	if (errorBlob != nullptr)
+	{
+		::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+	}
+	ThrowIfFailed(hr);
+
+	ThrowIfFailed(Device->CreateRootSignature(
+		0,
+		serializedRootSig->GetBufferPointer(),
+		serializedRootSig->GetBufferSize(),
+		IID_PPV_ARGS(&RootSignature)));
+}
+
+void* RendererD3D12::TestGetRootSignatureForSimpleBox()
+{
+	return RootSignature.Get();
 }
 
 void RendererD3D12::LogAdapters()
@@ -476,4 +641,15 @@ ComPtr<ID3D12Resource> RendererD3D12::CreateDefaultBuffer(
 	PendingUploaderRemovalInfos.push_back(PendingUploaderRemovalInfo(uploadBuffer));
 
 	return defaultBuffer;
+}
+
+void RendererD3D12::BuildDescriptorHeaps()
+{
+	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
+	cbvHeapDesc.NumDescriptors = 1;
+	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	cbvHeapDesc.NodeMask = 0;
+	ThrowIfFailed(Device->CreateDescriptorHeap(&cbvHeapDesc,
+		IID_PPV_ARGS(&CbvHeap)));
 }

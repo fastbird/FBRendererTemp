@@ -18,6 +18,10 @@ namespace fb
 		Microsoft::WRL::ComPtr<ID3D12Resource> DepthStencilBuffer;
 		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> RtvHeap;
 		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> DsvHeap;
+		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> CbvHeap;
+		Microsoft::WRL::ComPtr<ID3D12RootSignature> RootSignature;
+		std::vector<Microsoft::WRL::ComPtr<ID3D12PipelineState>> PSOs;
+
 		// RTV
 		// DSV
 		// SRV/CBV/UAV
@@ -41,15 +45,30 @@ namespace fb
 	public:
 
 		virtual bool Initialize(void* windowHandle) override;
-		virtual bool Finalize() override;
+		virtual void Finalize() override;
 		virtual void OnResized() override;
 		virtual void Draw(float dt) override;
+		virtual IVertexBuffer* CreateVertexBuffer(const void* vertexData, UINT size, UINT stride, bool keepData) override;
+		virtual IIndexBuffer* CreateIndexBuffer(const void* indexData, UINT size, EDataFormat format, bool keepData) override;
+		virtual IUploadBuffer* CreateUploadBuffer(UINT elementSize, UINT count, bool constantBuffer, CBVHeapType heapType) override;
+		virtual PSOID CreateGraphicsPipelineState(const FPSODesc& psoDesc) override;
+		virtual IShader* CompileShader(
+			const char* filepath, FShaderMacro* macros, int numMacros, EShaderType shaderType, const char* entryFunctionName) override;
+		virtual EDataFormat GetBackBufferFormat() const;
+		virtual EDataFormat GetDepthStencilFormat() const;
+		virtual int GetSampleCount() const;
+		virtual int GetMsaaQuality() const;
 
+		virtual void TestCreateRootSignatureForSimpleBox() override;
+		virtual void* TestGetRootSignatureForSimpleBox() override;
 		// Owning Functions
 		Microsoft::WRL::ComPtr<ID3D12Resource> CreateDefaultBuffer(
 			const void* initData,
 			UINT64 byteSize);
-
+		
+		ID3D12Device* GetDevice() const { return Device.Get(); }
+		
+		// Add Public Func;
 
 	private:
 
@@ -69,6 +88,10 @@ namespace fb
 		ID3D12Resource* CurrentBackBuffer()const;
 		D3D12_CPU_DESCRIPTOR_HANDLE CurrentBackBufferView()const;
 		D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView()const;
+
+		void BuildDescriptorHeaps();
+
+		// Add Private Func
 	};
 	extern RendererD3D12* gRendererD3D12;
 }
@@ -76,5 +99,4 @@ namespace fb
 extern "C"
 {
 	FBRendererD3D12_DLL fb::IRenderer* CreateRendererD3D12();
-	FBRendererD3D12_DLL void DeleteRendererD3D12(fb::IRenderer* renderer);
 }

@@ -59,7 +59,7 @@ bool RendererD3D12::Initialize(void* windowHandle)
 	assert(NumMsaa4xQualityLevels > 0 && "Unexpected MSAA quality level.");
 
 #ifdef _DEBUG
-	LogAdapters();
+	//LogAdapters();
 #endif
 
 	CreateCommandObjects();
@@ -173,6 +173,11 @@ void RendererD3D12::OnResized()
 	ScissorRect = { 0, 0, (LONG)clientWidth, (LONG)clientHeight };
 }
 
+void RendererD3D12::RegisterDrawCallback(DrawCallbackFunc func)
+{
+	DrawCallback = func;
+}
+
 void RendererD3D12::Draw(float dt)
 {
 	// Reuse the memory associated with command recording.
@@ -181,7 +186,13 @@ void RendererD3D12::Draw(float dt)
 
 	// A command list can be reset after it has been added to the command queue via ExecuteCommandList.
 	// Reusing the command list reuses memory.
-	ThrowIfFailed(CommandList->Reset(DirectCmdAllocator.Get(), nullptr));
+	if (!PSOs.empty())
+	{
+		ThrowIfFailed(CommandList->Reset(DirectCmdAllocator.Get(), PSOs.begin()->second.Get()));
+	}
+	else {
+		ThrowIfFailed(CommandList->Reset(DirectCmdAllocator.Get(), nullptr));
+	}
 
 	// Indicate a state transition on the resource usage.
 	CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
@@ -246,7 +257,27 @@ IIndexBuffer* RendererD3D12::CreateIndexBuffer(const void* indexData, UINT size,
 	return ib;
 }
 
-IUploadBuffer* RendererD3D12::CreateUploadBuffer(UINT elementSize, UINT count, bool constantBuffer, CBVHeapType heapType)
+void RendererD3D12::CreateCBVHeap(ECBVHeapType type)
+{
+	switch (type)
+	{
+	case ECBVHeapType::Default:
+	{
+		if (!DefaultCbvHeap) {
+			D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
+			cbvHeapDesc.NumDescriptors = 1;
+			cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+			cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+			cbvHeapDesc.NodeMask = 0;
+			ThrowIfFailed(Device->CreateDescriptorHeap(&cbvHeapDesc,
+				IID_PPV_ARGS(&DefaultCbvHeap)));
+		}
+	}
+	}
+
+}
+
+IUploadBuffer* RendererD3D12::CreateUploadBuffer(UINT elementSize, UINT count, bool constantBuffer, ECBVHeapType heapType)
 {
 	auto ub = new UploadBuffer();
 	if (!ub->Initialize(elementSize, constantBuffer ? 256 : 0, count))
@@ -257,7 +288,7 @@ IUploadBuffer* RendererD3D12::CreateUploadBuffer(UINT elementSize, UINT count, b
 
 	switch (heapType)
 	{
-	case CBVHeapType::Default:
+	case ECBVHeapType::Default:
 	{
 		D3D12_GPU_VIRTUAL_ADDRESS cbAddress = ub->Resource->GetGPUVirtualAddress();
 		// Insert offsetting code if necessary.
@@ -268,7 +299,7 @@ IUploadBuffer* RendererD3D12::CreateUploadBuffer(UINT elementSize, UINT count, b
 
 		Device->CreateConstantBufferView(
 			&cbvDesc,
-			CbvHeap->GetCPUDescriptorHandleForHeapStart());
+			DefaultCbvHeap->GetCPUDescriptorHandleForHeapStart());
 		break;
 	}
 	}
@@ -279,8 +310,9 @@ PSOID RendererD3D12::CreateGraphicsPipelineState(const FPSODesc& psoDesc)
 {
 	ComPtr<ID3D12PipelineState> pso;
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = Convert(psoDesc);
-	Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pso));
-	PSOs.push_back()
+	ThrowIfFailed(Device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pso)));
+	PSOs.insert(std::make_pair(NextPSOId, pso));
+	return NextPSOId++;
 }
 
 IShader* RendererD3D12::CompileShader(
@@ -300,22 +332,22 @@ IShader* RendererD3D12::CompileShader(
 	const char* shaderTarget = nullptr;
 	switch (shaderType) {
 	case EShaderType::PixelShader:
-		shaderTarget = "PS_5_1";
+		shaderTarget = "ps_5_1";
 		break;
 	case EShaderType::VertexShader:
-		shaderTarget = "VS_5_1";
+		shaderTarget = "vs_5_1";
 		break;
 	case EShaderType::GeometryShader:
-		shaderTarget = "GS_5_1";
+		shaderTarget = "gs_5_1";
 		break;
 	case EShaderType::HullShader:
-		shaderTarget = "HS_5_1";
+		shaderTarget = "hs_5_1";
 		break;
 	case EShaderType::DomainShader:
-		shaderTarget = "DS_5_1";
+		shaderTarget = "ds_5_1";
 		break;
 	case EShaderType::ComputeShader:
-		shaderTarget = "CS_5_1";
+		shaderTarget = "cs_5_1";
 		break;
 	}
 	assert(shaderTarget != nullptr);
@@ -323,14 +355,16 @@ IShader* RendererD3D12::CompileShader(
 		shader->ByteCode = fb::CompileShader(
 			AnsiToWString(filepath), d3dMacros, entryFunctionName, shaderTarget);
 	}
-	catch (fb::DxException& ex) {
-		OutputDebugString(ex.ToString().c_str());
+	catch (const fb::DxException& ex) {
+		ex.PrintErrorMessage();
+		DebugBreak();
 		delete shader; shader = nullptr;
 	}
 	delete[] macros;
 	return shader;
 }
-\EDataFormat RendererD3D12::GetBackBufferFormat() const
+
+EDataFormat RendererD3D12::GetBackBufferFormat() const
 {
 	return Convert(BackBufferFormat);
 }
@@ -347,8 +381,40 @@ int RendererD3D12::GetSampleCount() const
 
 int RendererD3D12::GetMsaaQuality() const
 {
-	return Msaa4xQuality;
-}\
+	assert(Msaa4xQuality - 1 >= 0);
+	return Msaa4xState ? Msaa4xQuality - 1 : 0;
+}
+
+void RendererD3D12::TempResetCommandList()
+{
+	ThrowIfFailed(CommandList->Reset(DirectCmdAllocator.Get(), nullptr));
+}
+
+void RendererD3D12::TempCloseCommandList(bool runAndFlush)
+{
+	ThrowIfFailed(CommandList->Close());
+	if (runAndFlush)
+	{
+		ID3D12CommandList* cmdsLists[] = { CommandList.Get() };
+		CommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+		FlushCommandQueue();
+	}
+}
+
+void RendererD3D12::TempBindDescriptorHeap(ECBVHeapType type)
+{
+	switch (type)
+	{
+	case ECBVHeapType::Default:
+	{
+		ID3D12DescriptorHeap* descriptorHeaps[] = { DefaultCbvHeap.Get() };
+		CommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+		break;
+	}
+	}
+
+}
+
 void RendererD3D12::TestCreateRootSignatureForSimpleBox()
 {
 	CD3DX12_ROOT_PARAMETER slotRootParameter[1];
@@ -602,7 +668,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE RendererD3D12::DepthStencilView()const
 	return DsvHeap->GetCPUDescriptorHandleForHeapStart();
 }
 
-ComPtr<ID3D12Resource> RendererD3D12::CreateDefaultBuffer(
+ComPtr<ID3D12Resource> RendererD3D12::CreateBufferInDefaultHeap(
 	const void* initData,
 	UINT64 byteSize)
 {

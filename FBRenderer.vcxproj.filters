@@ -36,6 +36,9 @@
     <ClInclude Include="PSO.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="PrimitiveTopology.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FBRenderer.cpp">

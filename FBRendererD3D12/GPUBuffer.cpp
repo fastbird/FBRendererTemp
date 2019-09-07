@@ -7,7 +7,7 @@ using namespace fb;
 bool GPUBuffer::Initialize(const void* data, UINT size, bool keepData)
 {
 	Size = size;
-	Resource = gRendererD3D12->CreateDefaultBuffer(data, size);
+	Resource = gRendererD3D12->CreateBufferInDefaultHeap(data, size);
 	if (keepData) {
 		ThrowIfFailed(D3DCreateBlob(size, &CPUData));
 		CopyMemory(CPUData->GetBufferPointer(), data, size);

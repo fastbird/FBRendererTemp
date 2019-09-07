@@ -22,6 +22,7 @@ float Theta = 0.f;
 glm::mat4 WorldMat, ViewMat, ProjMat;
 fb::IUploadBuffer* ConstantBuffer = nullptr;
 POINT LastMousePos;
+fb::PSOID SimpleBoxPSO;
 
 HINSTANCE hInst;                                // current instance
 HWND WindowHandle;
@@ -406,8 +407,9 @@ void BuildShadersAndInputLayout()
 
 void BuildPSO()
 {
-	fb::PSODesc psoDesc;
-	ZeroMemory(&psoDesc, sizeof(fb::PSODesc));
+	fb::FPSODesc psoDesc;
+	ZeroMemory(&psoDesc, sizeof(fb::FPSODesc));
+
 	psoDesc.InputLayout = { InputLayout.data(), (UINT)InputLayout.size() };
 	psoDesc.pRootSignature = gRenderer->TestGetRootSignatureForSimpleBox();
 	psoDesc.VS =
@@ -430,5 +432,5 @@ void BuildPSO()
 	psoDesc.SampleDesc.Count = gRenderer->GetSampleCount();
 	psoDesc.SampleDesc.Quality = gRenderer->GetMsaaQuality();
 	psoDesc.DSVFormat = gRenderer->GetDepthStencilFormat();
-	gRenderer->CreateGraphicsPipelineState(&psoDesc);
+	SimpleBoxPSO = gRenderer->CreateGraphicsPipelineState(psoDesc);
 }

@@ -128,6 +128,7 @@
     <ClInclude Include="InputElementDesc.h" />
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="IShader.h" />
+    <ClInclude Include="PrimitiveTopology.h" />
     <ClInclude Include="PSO.h" />
     <ClInclude Include="Types.h" />
   </ItemGroup>

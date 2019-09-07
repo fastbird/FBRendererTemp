@@ -6,10 +6,11 @@
 #include "InputElementDesc.h"
 #include "IShader.h"
 #include "PSO.h"
+#include <functional>
 
 namespace fb
 {
-	enum class CBVHeapType {
+	enum class ECBVHeapType {
 		None,
 		Default
 	};
@@ -34,6 +35,7 @@ namespace fb
 		virtual bool Initialize(const void* indexData, UINT size, EDataFormat format, bool keepData) = 0;
 		virtual UINT GetSize() const = 0;
 		virtual EDataFormat GetFormat() const = 0;
+		virtual UINT GetElementCount() const = 0;
 	};
 	FBDeclareIntrusivePointer2(IIndexBuffer);
 
@@ -48,6 +50,7 @@ namespace fb
 	};
 	FBDeclareIntrusivePointer2(IUploadBuffer);
 
+	using DrawCallbackFunc = void (*)();
 	class IRenderer
 	{
 	public:
@@ -56,11 +59,14 @@ namespace fb
 
 		virtual void OnResized() = 0;
 
+		virtual void RegisterDrawCallback(DrawCallbackFunc func) = 0;
+
 		virtual void Draw(float dt) = 0;
 
 		virtual IVertexBuffer* CreateVertexBuffer(const void* vertexData, UINT size, UINT stride, bool keepData) = 0;
 		virtual IIndexBuffer* CreateIndexBuffer(const void* indexData, UINT size, EDataFormat format, bool keepData) = 0;
-		virtual IUploadBuffer* CreateUploadBuffer(UINT elementSize, UINT count, bool constantBuffer, CBVHeapType heapType) = 0;
+		virtual void CreateCBVHeap(ECBVHeapType type) = 0;
+		virtual IUploadBuffer* CreateUploadBuffer(UINT elementSize, UINT count, bool constantBuffer, ECBVHeapType heapType) = 0;
 		virtual PSOID CreateGraphicsPipelineState(const FPSODesc& psoDesc) = 0;
 		virtual IShader* CompileShader(const char* filepath, FShaderMacro* macros, int numMacros, EShaderType shaderType, const char* entryFunctionName) = 0;
 		virtual EDataFormat GetBackBufferFormat() const = 0;
@@ -68,8 +74,17 @@ namespace fb
 		virtual int GetSampleCount() const = 0;
 		virtual int GetMsaaQuality() const = 0;
 
-		virtual void TestCreateRootSignatureForSimpleBox() = 0;
-		virtual RootSignature* TestGetRootSignatureForSimpleBox() = 0;
+		virtual void TempResetCommandList() = 0;
+		virtual void TempCloseCommandList(bool runAndFlush) = 0;
+		virtual void TempBindDescriptorHeap(ECBVHeapType type) = 0;
+		virtual void TempCreateRootSignatureForSimpleBox() = 0;
+		virtual RootSignature TempGetRootSignatureForSimpleBox() = 0;
+		virtual void TempBindRootSignature(RootSignature rootSig) = 0;
+		virtual void TempBindVertexBuffer(const IVertexBufferIntPtr& vb) = 0;
+		virtual void TempBindIndexBuffer(const IIndexBufferIntPtr& ib) = 0;
+		virtual void TempSetPrimitiveTopology(const fb::EPrimitiveTopology topology) = 0;
+		virtual void TempBindRootDescriptorTable(UINT slot, ECBVHeapType type) = 0;
+		virtual void TempDrawIndexedInstanced(UINT indexCount) = 0;
 	};
 }
 

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Util.h"
+#include <comdef.h>
 using Microsoft::WRL::ComPtr;
 
 using namespace fb;
@@ -12,9 +13,10 @@ DxException::DxException(HRESULT hr, const std::wstring& functionName, const std
 {
 }
 
-std::wstring DxException::ToString() const
+void DxException::PrintErrorMessage() const
 {
-	return L"Error.";
+	_com_error err(ErrorCode);
+	OutputDebugString(err.ErrorMessage());
 }
 
 ComPtr<ID3DBlob> fb::CompileShader(

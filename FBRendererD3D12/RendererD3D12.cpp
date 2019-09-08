@@ -55,8 +55,8 @@ bool RendererD3D12::Initialize(void* windowHandle)
 		&msQualityLevels,
 		sizeof(msQualityLevels)));
 
-	NumMsaa4xQualityLevels = msQualityLevels.NumQualityLevels;
-	assert(NumMsaa4xQualityLevels > 0 && "Unexpected MSAA quality level.");
+	Msaa4xQuality = msQualityLevels.NumQualityLevels;
+	assert(Msaa4xQuality > 0 && "Unexpected MSAA quality level.");
 
 #ifdef _DEBUG
 	//LogAdapters();
@@ -126,7 +126,7 @@ void RendererD3D12::OnResized()
 	depthStencilDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
 
 	depthStencilDesc.SampleDesc.Count = Msaa4xState ? 4 : 1;
-	depthStencilDesc.SampleDesc.Quality = Msaa4xState ? (NumMsaa4xQualityLevels - 1) : 0;
+	depthStencilDesc.SampleDesc.Quality = Msaa4xState ? (Msaa4xQuality - 1) : 0;
 	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
@@ -186,13 +186,7 @@ void RendererD3D12::Draw(float dt)
 
 	// A command list can be reset after it has been added to the command queue via ExecuteCommandList.
 	// Reusing the command list reuses memory.
-	if (!PSOs.empty())
-	{
-		ThrowIfFailed(CommandList->Reset(DirectCmdAllocator.Get(), PSOs.begin()->second.Get()));
-	}
-	else {
-		ThrowIfFailed(CommandList->Reset(DirectCmdAllocator.Get(), nullptr));
-	}
+	ThrowIfFailed(CommandList->Reset(DirectCmdAllocator.Get(), nullptr));
 
 	// Indicate a state transition on the resource usage.
 	CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
@@ -209,12 +203,18 @@ void RendererD3D12::Draw(float dt)
 	// Specify the buffers we are going to render to.
 	CommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 
-	// *************
-	// TEST CODE
-	CommandList->SetGraphicsRootSignature(RootSignature.Get());
-	ID3D12DescriptorHeap* descriptorHeaps[] = { CbvHeap.Get() };
-	CommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-	CommandList->SetGraphicsRootDescriptorTable(0, CbvHeap->GetGPUDescriptorHandleForHeapStart());
+	if (DrawCallback) {
+		DrawCallback();
+	}
+	else {
+		// *************
+		// TEST CODE
+		CommandList->SetPipelineState(PSOs.begin()->second.Get());
+		CommandList->SetGraphicsRootSignature(RootSignature.Get());
+		ID3D12DescriptorHeap* descriptorHeaps[] = { DefaultCbvHeap.Get() };
+		CommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+		CommandList->SetGraphicsRootDescriptorTable(0, DefaultCbvHeap->GetGPUDescriptorHandleForHeapStart());
+	}
 
 	// Indicate a state transition on the resource usage.
 	CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
@@ -385,6 +385,28 @@ int RendererD3D12::GetMsaaQuality() const
 	return Msaa4xState ? Msaa4xQuality - 1 : 0;
 }
 
+int RendererD3D12::GetBackbufferWidth() const
+{
+	return GetClientWidth();
+}
+
+int RendererD3D12::GetBackbufferHeight() const
+{
+	return GetClientHeight();
+}
+
+void RendererD3D12::BindPSO(PSOID id)
+{
+	auto it = PSOs.find(id);
+	if (it != PSOs.end()) {
+		CommandList->SetPipelineState(it->second.Get());
+	}
+	else
+	{
+		assert(0 && "PSO not found.");
+	}
+}
+
 void RendererD3D12::TempResetCommandList()
 {
 	ThrowIfFailed(CommandList->Reset(DirectCmdAllocator.Get(), nullptr));
@@ -415,7 +437,7 @@ void RendererD3D12::TempBindDescriptorHeap(ECBVHeapType type)
 
 }
 
-void RendererD3D12::TestCreateRootSignatureForSimpleBox()
+void RendererD3D12::TempCreateRootSignatureForSimpleBox()
 {
 	CD3DX12_ROOT_PARAMETER slotRootParameter[1];
 
@@ -445,9 +467,50 @@ void RendererD3D12::TestCreateRootSignatureForSimpleBox()
 		IID_PPV_ARGS(&RootSignature)));
 }
 
-void* RendererD3D12::TestGetRootSignatureForSimpleBox()
+void* RendererD3D12::TempGetRootSignatureForSimpleBox()
 {
 	return RootSignature.Get();
+}
+
+void RendererD3D12::TempBindRootSignature(fb::RootSignature rootSig)
+{
+	CommandList->SetGraphicsRootSignature((ID3D12RootSignature*)rootSig);
+}
+
+void RendererD3D12::TempBindVertexBuffer(const IVertexBufferIPtr& vb)
+{
+	auto d3dVB = (VertexBuffer*)vb.get();
+	D3D12_VERTEX_BUFFER_VIEW views[] = { d3dVB->VertexBufferView() };
+	CommandList->IASetVertexBuffers(0, 1, views);
+}
+
+void RendererD3D12::TempBindIndexBuffer(const IIndexBufferIPtr& ib)
+{
+	auto d3dIB = (IndexBuffer*)ib.get();
+	auto view = d3dIB->IndexBufferView();
+	CommandList->IASetIndexBuffer(&view);
+}
+
+void RendererD3D12::TempSetPrimitiveTopology(const fb::EPrimitiveTopology topology)
+{
+	CommandList->IASetPrimitiveTopology(Convert(topology));
+}
+
+void RendererD3D12::TempBindRootDescriptorTable(UINT slot, ECBVHeapType type)
+{
+	switch (type) {
+	case ECBVHeapType::Default:
+	{
+		CommandList->SetGraphicsRootDescriptorTable(slot, DefaultCbvHeap->GetGPUDescriptorHandleForHeapStart());
+		break;
+	}
+	}
+
+}
+
+void RendererD3D12::TempDrawIndexedInstanced(UINT indexCount)
+{
+	CommandList->DrawIndexedInstanced(indexCount, 1, 0, 0, 0);
 }
 
 void RendererD3D12::LogAdapters()
@@ -560,7 +623,7 @@ void RendererD3D12::CreateSwapChain()
 	sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	sd.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
 	sd.SampleDesc.Count = Msaa4xState ? 4 : 1;
-	sd.SampleDesc.Quality = Msaa4xState ? (NumMsaa4xQualityLevels - 1) : 0;
+	sd.SampleDesc.Quality = Msaa4xState ? (Msaa4xQuality - 1) : 0;
 	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	sd.BufferCount = SwapChainBufferCount;
 	sd.OutputWindow = WindowHandle;
@@ -569,10 +632,16 @@ void RendererD3D12::CreateSwapChain()
 	sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
 	// Note: Swap chain uses queue to perform flush.
-	ThrowIfFailed(DXGIFactory->CreateSwapChain(
-		CommandQueue.Get(),
-		&sd,
-		SwapChain.GetAddressOf()));
+	try {
+		ThrowIfFailed(DXGIFactory->CreateSwapChain(
+			CommandQueue.Get(),
+			&sd,
+			SwapChain.GetAddressOf()));
+	}
+	catch (const DxException& ex) {
+		ex.PrintErrorMessage();
+		DebugBreak();
+	}
 }
 
 void RendererD3D12::CreateRtvAndDsvDescriptorHeaps()
@@ -595,7 +664,7 @@ void RendererD3D12::CreateRtvAndDsvDescriptorHeaps()
 		&dsvHeapDesc, IID_PPV_ARGS(DsvHeap.GetAddressOf())));
 }
 
-UINT RendererD3D12::GetClientWidth()
+UINT RendererD3D12::GetClientWidth() const
 {
 	assert(WindowHandle);
 	RECT r;
@@ -603,7 +672,7 @@ UINT RendererD3D12::GetClientWidth()
 	return r.right - r.left;
 }
 
-UINT RendererD3D12::GetClientHeight()
+UINT RendererD3D12::GetClientHeight() const
 {
 	assert(WindowHandle);
 	RECT r;
@@ -672,7 +741,8 @@ ComPtr<ID3D12Resource> RendererD3D12::CreateBufferInDefaultHeap(
 	const void* initData,
 	UINT64 byteSize)
 {
-	ComPtr<ID3D12Resource> defaultBuffer;
+	ComPtr<ID3D12Resource> defaultHeapBuffer;
+	ID3D12Resource* uploadHeapBuffer = nullptr;
 
 	ThrowIfFailed(Device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
@@ -680,16 +750,15 @@ ComPtr<ID3D12Resource> RendererD3D12::CreateBufferInDefaultHeap(
 		&CD3DX12_RESOURCE_DESC::Buffer(byteSize),
 		D3D12_RESOURCE_STATE_COMMON,
 		nullptr,
-		IID_PPV_ARGS(defaultBuffer.GetAddressOf())));
+		IID_PPV_ARGS(defaultHeapBuffer.GetAddressOf())));
 
-	ID3D12Resource* uploadBuffer = nullptr;
 	ThrowIfFailed(Device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(byteSize),
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(&uploadBuffer)));
+		IID_PPV_ARGS(&uploadHeapBuffer)));
 
 	D3D12_SUBRESOURCE_DATA subResourceData = {};
 	subResourceData.pData = initData;
@@ -697,25 +766,18 @@ ComPtr<ID3D12Resource> RendererD3D12::CreateBufferInDefaultHeap(
 	subResourceData.SlicePitch = subResourceData.RowPitch;
 
 
-	CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(defaultBuffer.Get(),
+	CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(defaultHeapBuffer.Get(),
 		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
-	UpdateSubresources<1>(CommandList.Get(), defaultBuffer.Get(), uploadBuffer, 0, 0, 1, &subResourceData);
-	CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(defaultBuffer.Get(),
+	UpdateSubresources<1>(CommandList.Get(), defaultHeapBuffer.Get(), uploadHeapBuffer, 0, 0, 1, &subResourceData);
+	CommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(defaultHeapBuffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ));
 
 	// going to delete the upload buffer after commands are flushed.
-	PendingUploaderRemovalInfos.push_back(PendingUploaderRemovalInfo(uploadBuffer));
+	PendingUploaderRemovalInfos.push_back(PendingUploaderRemovalInfo(uploadHeapBuffer));
 
-	return defaultBuffer;
+	return defaultHeapBuffer;
 }
 
 void RendererD3D12::BuildDescriptorHeaps()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-	cbvHeapDesc.NumDescriptors = 1;
-	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	cbvHeapDesc.NodeMask = 0;
-	ThrowIfFailed(Device->CreateDescriptorHeap(&cbvHeapDesc,
-		IID_PPV_ARGS(&CbvHeap)));
 }

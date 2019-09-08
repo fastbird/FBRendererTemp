@@ -9,20 +9,26 @@
 #include <thread>
 #include <string>
 #include <array>
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+#pragma comment(lib,"assimp-vc142-mtd.lib")
 
 #define MAX_LOADSTRING 100
 
 // Global Variables:
 fb::IRenderer* gRenderer = nullptr;
 struct MeshGeometry* gBoxMesh = nullptr;
+struct MeshGeometry* FaceMesh = nullptr;
 
-float Radius = 10.0f;
-float Phi = 0.f;
-float Theta = 0.f;
-glm::mat4 WorldMat, ViewMat, ProjMat;
+float Radius = 50.0f;
+float Phi = glm::four_over_pi<float>();
+float Theta = 1.5f * glm::pi<float>();
+glm::mat4 WorldMat(1.0f), ViewMat(1.0f), ProjMat(1.0f);
 fb::IUploadBuffer* ConstantBuffer = nullptr;
 POINT LastMousePos;
 fb::PSOID SimpleBoxPSO;
+fb::PSOID FacePSO;
 
 HINSTANCE hInst;                                // current instance
 HWND WindowHandle;
@@ -39,6 +45,9 @@ void Update(float dt);
 void OnMouseMove(WPARAM btnState, int x, int y);
 void OnMouseDown(WPARAM btnState, int x, int y);
 void BuildShadersAndInputLayout();
+void BuildPSO();
+void Draw();
+MeshGeometry* ImportDAE(const char* filepath);
 
 struct Vertex
 {
@@ -51,8 +60,8 @@ struct MeshGeometry
 	// Give it a name so we can look it up by name.
 	std::string Name;
 
-	fb::IVertexBufferIntPtr VertexBuffer;
-	fb::IIndexBufferIntPtr IndexBuffer;
+	fb::IVertexBufferIPtr VertexBuffer;
+	fb::IIndexBufferIPtr IndexBuffer;
 
 	bool IsValid() const noexcept
 	{
@@ -60,6 +69,10 @@ struct MeshGeometry
 	}
 };
 
+void Test()
+{
+	
+}
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
                      _In_ LPWSTR    lpCmdLine,
@@ -69,7 +82,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     UNREFERENCED_PARAMETER(lpCmdLine);
 
     // TODO: Place code here.
-
+	Test();
     // Initialize global strings
     LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
     LoadStringW(hInstance, IDC_RENDERERTESTAPP, szWindowClass, MAX_LOADSTRING);
@@ -80,8 +93,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     {
         return FALSE;
     }
-
-	BuildBoxGeometry();
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_RENDERERTESTAPP));
 
@@ -112,6 +123,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	}
 
 	delete gBoxMesh; gBoxMesh = nullptr;
+	delete FaceMesh; FaceMesh = nullptr;
 	delete ConstantBuffer; ConstantBuffer = nullptr;
 	gRenderer->Finalize(); gRenderer = nullptr;
 
@@ -172,9 +184,21 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    UpdateWindow(WindowHandle);
 
    gRenderer = fb::InitRenderer(fb::RendererType::D3D12, (void*)WindowHandle);
-   ConstantBuffer = gRenderer->CreateUploadBuffer(sizeof(float[16]), 1, true, fb::CBVHeapType::Default);
-   gRenderer->TestCreateRootSignatureForSimpleBox();
+
+   gRenderer->CreateCBVHeap(fb::ECBVHeapType::Default);
+   
+   gRenderer->TempResetCommandList();
+   ConstantBuffer = gRenderer->CreateUploadBuffer(sizeof(float[16]), 1, true, fb::ECBVHeapType::Default);
    BuildShadersAndInputLayout();
+   gRenderer->TempCreateRootSignatureForSimpleBox();
+   BuildPSO();
+   gRenderer->RegisterDrawCallback(Draw);
+   BuildBoxGeometry();
+   FaceMesh = ImportDAE("assets/DK_WOMAN_MORPHER.DAE");
+   gRenderer->TempCloseCommandList(true);
+   auto clientWidth = gRenderer->GetBackbufferWidth();
+   auto clientHeight = gRenderer->GetBackbufferHeight();
+   ProjMat = glm::perspectiveFovLH(0.25f * glm::pi<float>(), (float)clientWidth, (float)clientHeight, 1.0f, 1000.0f);
 
    return gRenderer != nullptr;
 }
@@ -342,7 +366,9 @@ void Update(float dt)
 	glm::vec3 eyePos(x, y, z);
 	glm::vec3 target(0, 0, 0);
 	ViewMat = glm::lookAtLH(eyePos, target, glm::vec3(0, 1, 0));
-	auto wvp = WorldMat * ViewMat * ProjMat;
+	
+	auto wvp = ProjMat * ViewMat * WorldMat;
+	wvp = glm::transpose(wvp);
 
 	auto float16size = sizeof(float[16]);
 	assert(sizeof(wvp) == sizeof(float[16]));
@@ -392,26 +418,32 @@ void OnMouseDown(WPARAM btnState, int x, int y)
 	SetCapture(WindowHandle);
 }
 
-fb::IShaderIntPtr VS, PS;
+fb::IShaderIPtr VS, PS;
+fb::IShaderIPtr VS_Face;
 std::vector<fb::FInputElementDesc> InputLayout;
+std::vector<fb::FInputElementDesc> InputLayout_Face;
 void BuildShadersAndInputLayout()
 {
 	VS = gRenderer->CompileShader("Shaders/SimpleShader.hlsl", nullptr, 0, fb::EShaderType::VertexShader, "VS");
+	VS_Face = gRenderer->CompileShader("Shaders/FaceTest.hlsl", nullptr, 0, fb::EShaderType::VertexShader, "VS");
 	PS = gRenderer->CompileShader("Shaders/SimpleShader.hlsl", nullptr, 0, fb::EShaderType::PixelShader, "PS");
 
 	InputLayout = {
-		{ fb::EVertexElementType::Position, 0, fb::EDataFormat::R32G32B32_FLOAT, 0, 0, fb::EInputClassification::PerVertexData, 0 },
-		{ fb::EVertexElementType::Color, 0, fb::EDataFormat::R32G32B32A32_FLOAT, 0, 12, fb::EInputClassification::PerInstanceData, 0 }
+		{ "POSITION", 0, fb::EDataFormat::R32G32B32_FLOAT, 0, 0, fb::EInputClassification::PerVertexData, 0 },
+		{ "COLOR", 0, fb::EDataFormat::R32G32B32A32_FLOAT, 0, 12, fb::EInputClassification::PerVertexData, 0 }
+	};
+
+	InputLayout_Face = {
+		{ "POSITION", 0, fb::EDataFormat::R32G32B32_FLOAT, 0, 0, fb::EInputClassification::PerVertexData, 0 },
 	};
 }
 
 void BuildPSO()
 {
 	fb::FPSODesc psoDesc;
-	ZeroMemory(&psoDesc, sizeof(fb::FPSODesc));
 
 	psoDesc.InputLayout = { InputLayout.data(), (UINT)InputLayout.size() };
-	psoDesc.pRootSignature = gRenderer->TestGetRootSignatureForSimpleBox();
+	psoDesc.pRootSignature = gRenderer->TempGetRootSignatureForSimpleBox();
 	psoDesc.VS =
 	{
 		reinterpret_cast<BYTE*>(VS->GetByteCode()),
@@ -422,10 +454,6 @@ void BuildPSO()
 		reinterpret_cast<BYTE*>(PS->GetByteCode()),
 		PS->Size()
 	};
-	//psoDesc.RasterizerState
-	//psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	//psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	psoDesc.SampleMask = UINT_MAX;
 	psoDesc.PrimitiveTopologyType = fb::EPrimitiveTopologyType::TRIANGLE;
 	psoDesc.NumRenderTargets = 1;
 	psoDesc.RTVFormats[0] = gRenderer->GetBackBufferFormat();
@@ -433,4 +461,78 @@ void BuildPSO()
 	psoDesc.SampleDesc.Quality = gRenderer->GetMsaaQuality();
 	psoDesc.DSVFormat = gRenderer->GetDepthStencilFormat();
 	SimpleBoxPSO = gRenderer->CreateGraphicsPipelineState(psoDesc);
+
+	psoDesc.VS = {
+		reinterpret_cast<BYTE*>(VS_Face->GetByteCode()),
+		VS_Face->Size()
+	};
+	psoDesc.InputLayout = { InputLayout_Face.data(), (UINT)InputLayout_Face.size() };
+	psoDesc.RasterizerState.FillMode = fb::EFillMode::WIREFRAME;
+	FacePSO = gRenderer->CreateGraphicsPipelineState(psoDesc);
+}
+
+void Draw()
+{
+	gRenderer->BindPSO(FacePSO);
+	gRenderer->TempBindDescriptorHeap(fb::ECBVHeapType::Default);
+	gRenderer->TempBindRootSignature(gRenderer->TempGetRootSignatureForSimpleBox());
+
+	gRenderer->TempBindVertexBuffer(FaceMesh->VertexBuffer);
+	gRenderer->TempBindIndexBuffer(FaceMesh->IndexBuffer);
+	gRenderer->TempSetPrimitiveTopology(fb::EPrimitiveTopology::TRIANGLELIST);
+	gRenderer->TempBindRootDescriptorTable(0, fb::ECBVHeapType::Default);
+	gRenderer->TempDrawIndexedInstanced(FaceMesh->IndexBuffer->GetElementCount());
+}
+
+MeshGeometry* ImportDAE(const char* filepath)
+{
+	Assimp::Importer importer;
+	auto scene = importer.ReadFile(filepath, aiProcess_CalcTangentSpace |
+		aiProcess_Triangulate |
+		aiProcess_JoinIdenticalVertices |
+		aiProcess_SortByPType |
+		aiProcess_MakeLeftHanded |
+		aiProcess_FlipWindingOrder
+	);
+
+	char msg[512];
+	sprintf_s(msg, "Num Meshes : %d\n", scene->mNumMeshes);
+	OutputDebugStringA(msg);
+	if (scene->mNumMeshes == 0)
+		return nullptr;
+
+	auto aiMesh = scene->mMeshes[0];
+	sprintf_s(msg, "Num Vertices: %d\n", aiMesh->mNumVertices);
+	OutputDebugStringA(msg);
+
+	auto mesh  = new MeshGeometry;
+	mesh->Name = "FaceMesh";
+	assert(sizeof(ai_real) == sizeof(float));
+	// sizeof(float) = 4 bytes
+	auto verticesSize = aiMesh->mNumVertices * sizeof(float) * 3;
+	mesh->VertexBuffer = gRenderer->CreateVertexBuffer(aiMesh->mVertices, verticesSize, sizeof(float)*3, false);
+	if (aiMesh->mNumVertices < 0xffff) {
+		std::vector<uint16_t> indices;
+		for (int i = 0; i < aiMesh->mNumFaces; ++i) {
+			auto face = aiMesh->mFaces[i];
+			assert(face.mNumIndices == 3);
+			for (int f = 0; f < 3; ++f) {
+				indices.push_back(face.mIndices[f]);
+			}
+		}
+		mesh->IndexBuffer = gRenderer->CreateIndexBuffer(indices.data(), indices.size() * sizeof(uint16_t), fb::EDataFormat::R16_UINT, false);
+	}
+	else {
+		std::vector<uint32_t> indices;
+		for (int i = 0; i < aiMesh->mNumFaces; ++i) {
+			auto face = aiMesh->mFaces[i];
+			assert(face.mNumIndices == 3);
+			for (int f = 0; f < 3; ++f) {
+				indices.push_back(face.mIndices[f]);
+			}
+		}
+		mesh->IndexBuffer = gRenderer->CreateIndexBuffer(indices.data(), indices.size() * sizeof(uint32_t), fb::EDataFormat::R16_UINT, false);
+	}
+	return mesh;
+	
 }

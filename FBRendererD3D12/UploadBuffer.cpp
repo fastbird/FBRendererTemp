@@ -26,7 +26,8 @@ bool UploadBuffer::Initialize(UINT elementSize, UINT align, UINT count)
 		ThrowIfFailed(Resource->Map(0, nullptr, reinterpret_cast<void**>(&MappedData)));
 	}
 	catch (const DxException& ex) {
-		OutputDebugString(ex.ToString().c_str());
+		ex.PrintErrorMessage();
+		DebugBreak();
 		return false;
 	}
 

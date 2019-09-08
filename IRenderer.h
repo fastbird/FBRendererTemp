@@ -24,8 +24,6 @@ namespace fb
 		virtual UINT GetSize() const = 0;
 		virtual UINT GetStride() const = 0;
 	};
-	FBDeclareIntrusivePointer2(IVertexBuffer);
-
 
 	FBDeclareIntrusivePointer(IIndexBuffer);
 	class IIndexBuffer : public IRefCounted
@@ -37,7 +35,6 @@ namespace fb
 		virtual EDataFormat GetFormat() const = 0;
 		virtual UINT GetElementCount() const = 0;
 	};
-	FBDeclareIntrusivePointer2(IIndexBuffer);
 
 	FBDeclareIntrusivePointer(IUploadBuffer);
 	class IUploadBuffer : public IRefCounted
@@ -48,7 +45,6 @@ namespace fb
 		virtual bool Initialize(UINT elementSize, UINT align, UINT count) = 0;
 		virtual void CopyData(UINT elementIndex, void* elementData) = 0;
 	};
-	FBDeclareIntrusivePointer2(IUploadBuffer);
 
 	using DrawCallbackFunc = void (*)();
 	class IRenderer
@@ -73,6 +69,9 @@ namespace fb
 		virtual EDataFormat GetDepthStencilFormat() const = 0;
 		virtual int GetSampleCount() const = 0;
 		virtual int GetMsaaQuality() const = 0;
+		virtual int GetBackbufferWidth() const = 0;
+		virtual int GetBackbufferHeight() const = 0;
+		virtual void BindPSO(PSOID id) = 0;
 
 		virtual void TempResetCommandList() = 0;
 		virtual void TempCloseCommandList(bool runAndFlush) = 0;
@@ -80,8 +79,8 @@ namespace fb
 		virtual void TempCreateRootSignatureForSimpleBox() = 0;
 		virtual RootSignature TempGetRootSignatureForSimpleBox() = 0;
 		virtual void TempBindRootSignature(RootSignature rootSig) = 0;
-		virtual void TempBindVertexBuffer(const IVertexBufferIntPtr& vb) = 0;
-		virtual void TempBindIndexBuffer(const IIndexBufferIntPtr& ib) = 0;
+		virtual void TempBindVertexBuffer(const IVertexBufferIPtr& vb) = 0;
+		virtual void TempBindIndexBuffer(const IIndexBufferIPtr& ib) = 0;
 		virtual void TempSetPrimitiveTopology(const fb::EPrimitiveTopology topology) = 0;
 		virtual void TempBindRootDescriptorTable(UINT slot, ECBVHeapType type) = 0;
 		virtual void TempDrawIndexedInstanced(UINT indexCount) = 0;

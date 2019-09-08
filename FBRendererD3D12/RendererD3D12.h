@@ -58,10 +58,13 @@ namespace fb
 		virtual PSOID CreateGraphicsPipelineState(const FPSODesc& psoDesc) override;
 		virtual IShader* CompileShader(
 			const char* filepath, FShaderMacro* macros, int numMacros, EShaderType shaderType, const char* entryFunctionName) override;
-		virtual EDataFormat GetBackBufferFormat() const;
-		virtual EDataFormat GetDepthStencilFormat() const;
-		virtual int GetSampleCount() const;
-		virtual int GetMsaaQuality() const;
+		virtual EDataFormat GetBackBufferFormat() const override;
+		virtual EDataFormat GetDepthStencilFormat() const override;
+		virtual int GetSampleCount() const override;
+		virtual int GetMsaaQuality() const override;
+		virtual int GetBackbufferWidth() const override;
+		virtual int GetBackbufferHeight() const override;
+		virtual void BindPSO(PSOID id) override;
 
 		virtual void TempResetCommandList() override;
 		virtual void TempCloseCommandList(bool runAndFlush) override;
@@ -69,8 +72,8 @@ namespace fb
 		virtual void TempCreateRootSignatureForSimpleBox() override;
 		virtual fb::RootSignature TempGetRootSignatureForSimpleBox() override;
 		virtual void TempBindRootSignature(fb::RootSignature rootSig) override;
-		virtual void TempBindVertexBuffer(const IVertexBufferIntPtr& vb) override;
-		virtual void TempBindIndexBuffer(const IIndexBufferIntPtr& ib) override;
+		virtual void TempBindVertexBuffer(const IVertexBufferIPtr& vb) override;
+		virtual void TempBindIndexBuffer(const IIndexBufferIPtr& ib) override;
 		virtual void TempSetPrimitiveTopology(const fb::EPrimitiveTopology topology) override;
 		virtual void TempBindRootDescriptorTable(UINT slot, ECBVHeapType type) override;
 		virtual void TempDrawIndexedInstanced(UINT indexCount) override;
@@ -95,8 +98,8 @@ namespace fb
 		void CreateSwapChain();
 		void CreateRtvAndDsvDescriptorHeaps();
 
-		UINT GetClientWidth();
-		UINT GetClientHeight();
+		UINT GetClientWidth() const;
+		UINT GetClientHeight() const;
 
 		void FlushCommandQueue();
 

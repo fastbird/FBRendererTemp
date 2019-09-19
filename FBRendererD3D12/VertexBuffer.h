@@ -15,5 +15,10 @@ namespace fb
 		{
 			return D3D12_VERTEX_BUFFER_VIEW{ Resource->GetGPUVirtualAddress(), Size, Stride };
 		}
+
+		void Bind(int startSlot);
+		virtual void FromUploadBuffer(IUploadBufferIPtr iUploadBuffer) override;
+		virtual void* GetCPUAddress() override;
+		
 	};
 }

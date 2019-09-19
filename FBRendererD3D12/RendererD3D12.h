@@ -65,6 +65,7 @@ namespace fb
 		virtual int GetBackbufferWidth() const override;
 		virtual int GetBackbufferHeight() const override;
 		virtual void BindPSO(PSOID id) override;
+		ID3D12GraphicsCommandList* GetGraphicsCommandList() const { return CommandList.Get(); }
 
 		virtual void TempResetCommandList() override;
 		virtual void TempCloseCommandList(bool runAndFlush) override;

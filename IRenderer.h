@@ -14,6 +14,7 @@ namespace fb
 		None,
 		Default
 	};
+	FBDeclareIntrusivePointer(IUploadBuffer);
 
 	FBDeclareIntrusivePointer(IVertexBuffer);
 	class IVertexBuffer : public IRefCounted
@@ -23,6 +24,8 @@ namespace fb
 		virtual bool Initialize(const void* vertexData, UINT size, UINT stride, bool keepData) = 0;
 		virtual UINT GetSize() const = 0;
 		virtual UINT GetStride() const = 0;
+		virtual void FromUploadBuffer(IUploadBufferIPtr iUploadBuffer) = 0;
+		virtual void* GetCPUAddress() = 0;
 	};
 
 	FBDeclareIntrusivePointer(IIndexBuffer);
@@ -36,7 +39,7 @@ namespace fb
 		virtual UINT GetElementCount() const = 0;
 	};
 
-	FBDeclareIntrusivePointer(IUploadBuffer);
+	
 	class IUploadBuffer : public IRefCounted
 	{
 	public:
@@ -44,6 +47,7 @@ namespace fb
 		// align : 256 for constant buffers. 0 for otherwise.
 		virtual bool Initialize(UINT elementSize, UINT align, UINT count) = 0;
 		virtual void CopyData(UINT elementIndex, void* elementData) = 0;
+		virtual void CopyData(UINT elementIndex, void* elementData, UINT count) = 0;
 	};
 
 	using DrawCallbackFunc = void (*)();

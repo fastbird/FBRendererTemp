@@ -280,7 +280,7 @@ void RendererD3D12::CreateCBVHeap(ECBVHeapType type)
 IUploadBuffer* RendererD3D12::CreateUploadBuffer(UINT elementSize, UINT count, bool constantBuffer, ECBVHeapType heapType)
 {
 	auto ub = new UploadBuffer();
-	if (!ub->Initialize(elementSize, constantBuffer ? 256 : 0, count))
+	if (!ub->Initialize(elementSize, constantBuffer ? 256 : 1, count))
 	{
 		delete ub;
 		return nullptr;

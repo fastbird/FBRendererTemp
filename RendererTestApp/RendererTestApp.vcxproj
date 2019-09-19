@@ -157,6 +157,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
+    <ClInclude Include="Mesh.h" />
     <ClInclude Include="MyAnotherClass.h" />
     <ClInclude Include="MyClass.h" />
     <ClInclude Include="RendererTestApp.h" />
@@ -164,6 +165,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Mesh.cpp" />
     <ClCompile Include="RendererTestApp.cpp" />
   </ItemGroup>
   <ItemGroup>

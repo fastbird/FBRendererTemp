@@ -9,6 +9,7 @@
 #include <thread>
 #include <string>
 #include <array>
+#include <map>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -44,6 +45,7 @@ bool				BuildBoxGeometry();
 void Update(float dt);
 void OnMouseMove(WPARAM btnState, int x, int y);
 void OnMouseDown(WPARAM btnState, int x, int y);
+void OnMouseUp(WPARAM btnState, int x, int y);
 void BuildShadersAndInputLayout();
 void BuildPSO();
 void Draw();
@@ -66,7 +68,14 @@ struct MeshGeometry
 	bool IsValid() const noexcept
 	{
 		return VertexBuffer != nullptr;
-	}
+	}	
+};
+
+struct MorphMesh : public MeshGeometry
+{
+	fb::IUploadBufferIPtr VertexUploadBuffer;
+	fb::IVertexBufferIPtr BaseGeometry;
+	std::map<std::string, fb::IVertexBufferIPtr> MorphTargets;
 };
 
 void Test()
@@ -278,6 +287,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_RBUTTONDOWN:
 		OnMouseDown(wParam, LOWORD(lParam), HIWORD(lParam));
 		return 0;
+	case WM_LBUTTONUP:
+	case WM_MBUTTONUP:
+	case WM_RBUTTONUP:
+		OnMouseUp(wParam, LOWORD(lParam), HIWORD(lParam));
+		break;
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
@@ -418,6 +432,14 @@ void OnMouseDown(WPARAM btnState, int x, int y)
 	SetCapture(WindowHandle);
 }
 
+void OnMouseUp(WPARAM btnState, int x, int y)
+{
+	LastMousePos.x = x;
+	LastMousePos.y = y;
+
+	ReleaseCapture();
+}
+
 fb::IShaderIPtr VS, PS;
 fb::IShaderIPtr VS_Face;
 std::vector<fb::FInputElementDesc> InputLayout;
@@ -484,6 +506,40 @@ void Draw()
 	gRenderer->TempDrawIndexedInstanced(FaceMesh->IndexBuffer->GetElementCount());
 }
 
+struct PositionOnlyVertex
+{
+	glm::vec3 Position;
+
+	PositionOnlyVertex() = default;
+	
+	PositionOnlyVertex(float x, float y, float z)
+		:Position(x, y, z)
+	{
+	}
+	
+	PositionOnlyVertex(const glm::vec3& v)
+		: Position(v)
+	{}
+	
+	PositionOnlyVertex operator*(float s) const {
+		return	PositionOnlyVertex(Position * s);
+	}
+
+	PositionOnlyVertex operator+(const PositionOnlyVertex& b) const
+	{
+		return PositionOnlyVertex(Position + b.Position);
+	}
+
+	PositionOnlyVertex operator-(const PositionOnlyVertex& b) const
+	{
+		return PositionOnlyVertex(Position - b.Position);
+	}
+};
+
+PositionOnlyVertex Lerp(const PositionOnlyVertex& a, const PositionOnlyVertex& b, float t) {
+	return a * (1.0f - t) + b * t;
+}
+
 MeshGeometry* ImportDAE(const char* filepath)
 {
 	Assimp::Importer importer;
@@ -504,35 +560,69 @@ MeshGeometry* ImportDAE(const char* filepath)
 	auto aiMesh = scene->mMeshes[0];
 	sprintf_s(msg, "Num Vertices: %d\n", aiMesh->mNumVertices);
 	OutputDebugStringA(msg);
-
-	auto mesh  = new MeshGeometry;
+	
+	auto mesh  = new MorphMesh;
 	mesh->Name = "FaceMesh";
 	assert(sizeof(ai_real) == sizeof(float));
 	// sizeof(float) = 4 bytes
-	auto verticesSize = aiMesh->mNumVertices * sizeof(float) * 3;
-	mesh->VertexBuffer = gRenderer->CreateVertexBuffer(aiMesh->mVertices, verticesSize, sizeof(float)*3, false);
+	UINT verticesSize = aiMesh->mNumVertices * sizeof(float) * 3;
+	mesh->VertexBuffer = gRenderer->CreateVertexBuffer(nullptr, 0, 0, false);
+	mesh->BaseGeometry = gRenderer->CreateVertexBuffer(aiMesh->mVertices, verticesSize, sizeof(float) * 3, true);
 	if (aiMesh->mNumVertices < 0xffff) {
 		std::vector<uint16_t> indices;
-		for (int i = 0; i < aiMesh->mNumFaces; ++i) {
+		for (UINT i = 0; i < aiMesh->mNumFaces; ++i) {
 			auto face = aiMesh->mFaces[i];
 			assert(face.mNumIndices == 3);
 			for (int f = 0; f < 3; ++f) {
 				indices.push_back(face.mIndices[f]);
 			}
 		}
-		mesh->IndexBuffer = gRenderer->CreateIndexBuffer(indices.data(), indices.size() * sizeof(uint16_t), fb::EDataFormat::R16_UINT, false);
+		mesh->IndexBuffer = gRenderer->CreateIndexBuffer(indices.data(), (UINT)indices.size() * sizeof(uint16_t), fb::EDataFormat::R16_UINT, false);
 	}
 	else {
 		std::vector<uint32_t> indices;
-		for (int i = 0; i < aiMesh->mNumFaces; ++i) {
+		for (UINT i = 0; i < aiMesh->mNumFaces; ++i) {
 			auto face = aiMesh->mFaces[i];
 			assert(face.mNumIndices == 3);
 			for (int f = 0; f < 3; ++f) {
 				indices.push_back(face.mIndices[f]);
 			}
 		}
-		mesh->IndexBuffer = gRenderer->CreateIndexBuffer(indices.data(), indices.size() * sizeof(uint32_t), fb::EDataFormat::R16_UINT, false);
+		mesh->IndexBuffer = gRenderer->CreateIndexBuffer(indices.data(), (UINT)indices.size() * sizeof(uint32_t), fb::EDataFormat::R16_UINT, false);
 	}
-	return mesh;
+
+	// Load morph targets
+	for (UINT i = 0; i < aiMesh->mNumAnimMeshes; ++i) {
+		auto aiAnimMesh = aiMesh->mAnimMeshes[i];
+		UINT vSize = aiAnimMesh->mNumVertices * sizeof(float) * 3;
+		assert(vSize == verticesSize);
+		auto vertexBuffer = gRenderer->CreateVertexBuffer(aiAnimMesh->mVertices, vSize, (UINT)sizeof(float) * 3, true);
+		mesh->MorphTargets.insert(std::make_pair(aiAnimMesh->mName.C_Str(), vertexBuffer));
+	}
+
+	mesh->VertexUploadBuffer = gRenderer->CreateUploadBuffer(sizeof(float) * 3, aiMesh->mNumVertices, false, fb::ECBVHeapType::None);
+	float weights[] = { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f };
 	
+	std::vector<PositionOnlyVertex> morphResult(aiMesh->mNumVertices);
+	auto baseVertices = (PositionOnlyVertex*)mesh->BaseGeometry->GetCPUAddress();
+	memcpy(morphResult.data(), mesh->BaseGeometry->GetCPUAddress(), verticesSize);
+	auto usingMorphTargets = 10;
+	int i = 0;
+	for (auto it : mesh->MorphTargets) {
+		auto name = it.first;
+		auto vertexBuffer = it.second;
+		auto w = weights[i];
+		auto morphVertices = (PositionOnlyVertex*)vertexBuffer->GetCPUAddress();
+		for (UINT v = 0; v < aiMesh->mNumVertices; ++v) {
+			morphResult[v] = morphResult[v] + ((morphVertices[v] - baseVertices[v]) * w);
+		}
+		++i;
+		if (i >= usingMorphTargets)
+			break;
+	}
+	mesh->VertexUploadBuffer->CopyData(0, morphResult.data(), aiMesh->mNumVertices);
+	
+	mesh->VertexBuffer->FromUploadBuffer(mesh->VertexUploadBuffer);
+
+	return mesh;	
 }

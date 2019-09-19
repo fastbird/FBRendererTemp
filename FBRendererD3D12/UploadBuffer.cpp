@@ -8,7 +8,7 @@ using namespace fb;
 bool UploadBuffer::Initialize(UINT elementSize, UINT align, UINT count)
 {
 	ElementSizeBeforeAligned = elementSize;
-	if (align != 0 || align != 1) {
+	if (align != 1) {
 		elementSize = fb::CalcAligned(elementSize, align);
 	}
 	ElementSize = elementSize;
@@ -45,4 +45,9 @@ UploadBuffer::~UploadBuffer()
 void UploadBuffer::CopyData(UINT elementIndex, void* elementData)
 {
 	memcpy(&MappedData[elementIndex * ElementSize], elementData, ElementSizeBeforeAligned);
+}
+
+void UploadBuffer::CopyData(UINT elementIndex, void* elementData, UINT count)
+{
+	memcpy(&MappedData[elementIndex * ElementSize], elementData, count * ElementSizeBeforeAligned);
 }

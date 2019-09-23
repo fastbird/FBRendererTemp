@@ -19,7 +19,7 @@ namespace fb
 		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> RtvHeap;
 		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> DsvHeap;
 		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> DefaultCbvHeap;
-		Microsoft::WRL::ComPtr<ID3D12RootSignature> RootSignature;
+		IRootSignatureIPtr SimpleBoxRootSig;
 		std::unordered_map<PSOID, Microsoft::WRL::ComPtr<ID3D12PipelineState>> PSOs;
 		PSOID NextPSOId = 1;
 
@@ -64,18 +64,25 @@ namespace fb
 		virtual int GetMsaaQuality() const override;
 		virtual int GetBackbufferWidth() const override;
 		virtual int GetBackbufferHeight() const override;
-		virtual void BindPSO(PSOID id) override;
+		virtual void SetPipelineState(PSOID id) override;
 		ID3D12GraphicsCommandList* GetGraphicsCommandList() const { return CommandList.Get(); }
+		virtual void SetViewportAndScissor(int x, int y, UINT width, UINT height) override;
+		virtual void SetPrimitiveTopology(const fb::EPrimitiveTopology topology) override;
+		virtual IRootSignature* CreateRootSignature(const char* definition) override;
+		virtual void SetGraphicsRoot32BitConstants(UINT RootParameterIndex, UINT Num32BitValuesToSet, const void* pSrcData, UINT DestOffsetIn32BitValues) override;
+		virtual void DrawInstanced(UINT VertexCountPerInstance,
+			UINT InstanceCount,
+			UINT StartVertexLocation,
+			UINT StartInstanceLocation);
 
 		virtual void TempResetCommandList() override;
 		virtual void TempCloseCommandList(bool runAndFlush) override;
 		virtual void TempBindDescriptorHeap(ECBVHeapType type) override;
 		virtual void TempCreateRootSignatureForSimpleBox() override;
-		virtual fb::RootSignature TempGetRootSignatureForSimpleBox() override;
-		virtual void TempBindRootSignature(fb::RootSignature rootSig) override;
+		virtual IRootSignatureIPtr TempGetRootSignatureForSimpleBox() override;
+		virtual void TempBindRootSignature(IRootSignatureIPtr RootSignature) override;
 		virtual void TempBindVertexBuffer(const IVertexBufferIPtr& vb) override;
 		virtual void TempBindIndexBuffer(const IIndexBufferIPtr& ib) override;
-		virtual void TempSetPrimitiveTopology(const fb::EPrimitiveTopology topology) override;
 		virtual void TempBindRootDescriptorTable(UINT slot, ECBVHeapType type) override;
 		virtual void TempDrawIndexedInstanced(UINT indexCount) override;
 
@@ -86,6 +93,7 @@ namespace fb
 			UINT64 byteSize);
 		
 		ID3D12Device* GetDevice() const { return Device.Get(); }
+		void Bind(ID3D12RootSignature* rootSig);
 		
 		// Add Public Func;
 

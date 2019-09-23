@@ -7,7 +7,10 @@ using namespace fb;
 bool VertexBuffer::Initialize(const void* vertexData, UINT size, UINT stride, bool keepData)
 {
 	Stride = stride;
-	return GPUBuffer::Initialize(vertexData, size, keepData);
+	auto result = GPUBuffer::Initialize(vertexData, size, keepData);
+	if (stride != 0)
+		NumVertices = size / stride;
+	return result;
 }
 
 void VertexBuffer::Bind(int startSlot)
@@ -23,6 +26,8 @@ void VertexBuffer::FromUploadBuffer(IUploadBufferIPtr iUploadBuffer)
 	Resource = uploadBuffer->GetResource();
 	Stride = uploadBuffer->GetElementSize();
 	Size = Stride * uploadBuffer->GetCount();
+	if (Stride != 0)
+		NumVertices = Size / Stride;
 }
 
 void* VertexBuffer::GetCPUAddress()

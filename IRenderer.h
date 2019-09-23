@@ -6,6 +6,8 @@
 #include "InputElementDesc.h"
 #include "IShader.h"
 #include "PSO.h"
+#include "IVertexBuffer.h"
+#include "IRootSignature.h"
 #include <functional>
 
 namespace fb
@@ -15,18 +17,6 @@ namespace fb
 		Default
 	};
 	FBDeclareIntrusivePointer(IUploadBuffer);
-
-	FBDeclareIntrusivePointer(IVertexBuffer);
-	class IVertexBuffer : public IRefCounted
-	{
-	public:
-		virtual ~IVertexBuffer() {}
-		virtual bool Initialize(const void* vertexData, UINT size, UINT stride, bool keepData) = 0;
-		virtual UINT GetSize() const = 0;
-		virtual UINT GetStride() const = 0;
-		virtual void FromUploadBuffer(IUploadBufferIPtr iUploadBuffer) = 0;
-		virtual void* GetCPUAddress() = 0;
-	};
 
 	FBDeclareIntrusivePointer(IIndexBuffer);
 	class IIndexBuffer : public IRefCounted
@@ -75,17 +65,26 @@ namespace fb
 		virtual int GetMsaaQuality() const = 0;
 		virtual int GetBackbufferWidth() const = 0;
 		virtual int GetBackbufferHeight() const = 0;
-		virtual void BindPSO(PSOID id) = 0;
+		virtual void SetPipelineState(PSOID id) = 0;
+		virtual void SetViewportAndScissor(int x, int y, UINT width, UINT height) = 0;
+		virtual void SetPrimitiveTopology(const fb::EPrimitiveTopology topology) = 0;
+		virtual IRootSignature* CreateRootSignature(const char* definition) = 0;
+
+		virtual void SetGraphicsRoot32BitConstants(UINT RootParameterIndex, UINT Num32BitValuesToSet, const void* pSrcData, UINT DestOffsetIn32BitValues) = 0;
+		virtual void DrawInstanced(UINT VertexCountPerInstance,
+			UINT InstanceCount,
+			UINT StartVertexLocation,
+			UINT StartInstanceLocation) = 0;
 
 		virtual void TempResetCommandList() = 0;
 		virtual void TempCloseCommandList(bool runAndFlush) = 0;
 		virtual void TempBindDescriptorHeap(ECBVHeapType type) = 0;
 		virtual void TempCreateRootSignatureForSimpleBox() = 0;
-		virtual RootSignature TempGetRootSignatureForSimpleBox() = 0;
-		virtual void TempBindRootSignature(RootSignature rootSig) = 0;
+		virtual IRootSignatureIPtr TempGetRootSignatureForSimpleBox() = 0;
+		virtual void TempBindRootSignature(IRootSignatureIPtr rootSig) = 0;
 		virtual void TempBindVertexBuffer(const IVertexBufferIPtr& vb) = 0;
 		virtual void TempBindIndexBuffer(const IIndexBufferIPtr& ib) = 0;
-		virtual void TempSetPrimitiveTopology(const fb::EPrimitiveTopology topology) = 0;
+		
 		virtual void TempBindRootDescriptorTable(UINT slot, ECBVHeapType type) = 0;
 		virtual void TempDrawIndexedInstanced(UINT indexCount) = 0;
 	};

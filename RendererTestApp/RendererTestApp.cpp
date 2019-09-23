@@ -13,6 +13,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include "../AxisRenderer.h"
 #pragma comment(lib,"assimp-vc142-mtd.lib")
 
 #define MAX_LOADSTRING 100
@@ -22,19 +23,27 @@ fb::IRenderer* gRenderer = nullptr;
 struct MeshGeometry* gBoxMesh = nullptr;
 struct MeshGeometry* FaceMesh = nullptr;
 
-float Radius = 50.0f;
-float Phi = glm::four_over_pi<float>();
-float Theta = 1.5f * glm::pi<float>();
+float Radius = 10.0f;
+float Phi = 0;// -glm::half_pi<float>();
+float Theta = glm::half_pi<float>();
+//float Phi = glm::four_over_pi<float>();
+//float Theta = 1.5f * glm::pi<float>();
 glm::mat4 WorldMat(1.0f), ViewMat(1.0f), ProjMat(1.0f);
 fb::IUploadBuffer* ConstantBuffer = nullptr;
 POINT LastMousePos;
 fb::PSOID SimpleBoxPSO;
 fb::PSOID FacePSO;
+fb::AxisRenderer* gAxisRenderer = nullptr;
 
 HINSTANCE hInst;                                // current instance
 HWND WindowHandle;
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
+
+fb::IShaderIPtr VS, PS;
+fb::IShaderIPtr VS_Face;
+std::vector<fb::FInputElementDesc> InputLayout;
+std::vector<fb::FInputElementDesc> InputLayout_Face;
 
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -131,6 +140,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 		}
 	}
 
+	delete gAxisRenderer; gAxisRenderer = nullptr;
 	delete gBoxMesh; gBoxMesh = nullptr;
 	delete FaceMesh; FaceMesh = nullptr;
 	delete ConstantBuffer; ConstantBuffer = nullptr;
@@ -204,9 +214,15 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    gRenderer->RegisterDrawCallback(Draw);
    BuildBoxGeometry();
    FaceMesh = ImportDAE("assets/DK_WOMAN_MORPHER.DAE");
-   gRenderer->TempCloseCommandList(true);
+
    auto clientWidth = gRenderer->GetBackbufferWidth();
    auto clientHeight = gRenderer->GetBackbufferHeight();
+
+   gAxisRenderer = new fb::AxisRenderer(gRenderer, 0, 0, clientWidth, clientHeight, { InputLayout.data(), (UINT)InputLayout.size() });
+   gAxisRenderer->SetShaders(VS, PS);
+
+   gRenderer->TempCloseCommandList(true);
+   
    ProjMat = glm::perspectiveFovLH(0.25f * glm::pi<float>(), (float)clientWidth, (float)clientHeight, 1.0f, 1000.0f);
 
    return gRenderer != nullptr;
@@ -371,15 +387,20 @@ bool BuildBoxGeometry()
 
 void Update(float dt)
 {
+	// theta : 0~pi  vertical
+	// phi : 0~2pi   horizontal
 	// Convert Spherical to Cartesian coordinates.
-	float x = Radius * sinf(Phi) * cosf(Theta);
-	float z = Radius * sinf(Phi) * sinf(Theta);
-	float y = Radius * cosf(Phi);
+	float x = Radius * sinf(Theta) * cosf(Phi);
+	float z = Radius * sinf(Theta) * sinf(Phi);
+	float y = Radius * cosf(Theta);
 
 	// Build the view matrix.
 	glm::vec3 eyePos(x, y, z);
 	glm::vec3 target(0, 0, 0);
 	ViewMat = glm::lookAtLH(eyePos, target, glm::vec3(0, 1, 0));
+	if (gAxisRenderer) {
+		gAxisRenderer->SetViewMat(ViewMat);
+	}
 	
 	auto wvp = ProjMat * ViewMat * WorldMat;
 	wvp = glm::transpose(wvp);
@@ -396,15 +417,16 @@ void OnMouseMove(WPARAM btnState, int x, int y)
 	{
 
 		// Make each pixel correspond to a quarter of a degree.
-		float dx = glm::radians(0.25f * static_cast<float>(x - LastMousePos.x));
-		float dy = glm::radians(0.25f * static_cast<float>(y - LastMousePos.y));
+		float dx = glm::radians(static_cast<float>(x - LastMousePos.x));
+		float dy = glm::radians(static_cast<float>(y - LastMousePos.y));
 
 		// Update angles based on input to orbit camera around box.
-		Theta += dx;
-		Phi += dy;
+		Phi += dx;
+		Theta += dy;
+		
 
 		// Restrict the angle mPhi.
-		Phi = glm::clamp(Phi, 0.1f, glm::pi<float>() - 0.1f);
+		Theta = glm::clamp(Theta, 0.1f, glm::pi<float>() - 0.1f);
 	}
 	else if ((btnState & MK_RBUTTON) != 0)
 	{
@@ -440,10 +462,6 @@ void OnMouseUp(WPARAM btnState, int x, int y)
 	ReleaseCapture();
 }
 
-fb::IShaderIPtr VS, PS;
-fb::IShaderIPtr VS_Face;
-std::vector<fb::FInputElementDesc> InputLayout;
-std::vector<fb::FInputElementDesc> InputLayout_Face;
 void BuildShadersAndInputLayout()
 {
 	VS = gRenderer->CompileShader("Shaders/SimpleShader.hlsl", nullptr, 0, fb::EShaderType::VertexShader, "VS");
@@ -495,15 +513,19 @@ void BuildPSO()
 
 void Draw()
 {
-	gRenderer->BindPSO(FacePSO);
+	gRenderer->SetPipelineState(FacePSO);
 	gRenderer->TempBindDescriptorHeap(fb::ECBVHeapType::Default);
 	gRenderer->TempBindRootSignature(gRenderer->TempGetRootSignatureForSimpleBox());
 
 	gRenderer->TempBindVertexBuffer(FaceMesh->VertexBuffer);
 	gRenderer->TempBindIndexBuffer(FaceMesh->IndexBuffer);
-	gRenderer->TempSetPrimitiveTopology(fb::EPrimitiveTopology::TRIANGLELIST);
+	gRenderer->SetPrimitiveTopology(fb::EPrimitiveTopology::TRIANGLELIST);
 	gRenderer->TempBindRootDescriptorTable(0, fb::ECBVHeapType::Default);
-	gRenderer->TempDrawIndexedInstanced(FaceMesh->IndexBuffer->GetElementCount());
+	//gRenderer->TempDrawIndexedInstanced(FaceMesh->IndexBuffer->GetElementCount());
+
+	if (gAxisRenderer) {
+		gAxisRenderer->Render();
+	}
 }
 
 struct PositionOnlyVertex

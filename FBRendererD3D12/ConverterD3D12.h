@@ -1,5 +1,6 @@
 #pragma once
 #include "../IRenderer.h"
+#include "RootSignature.h"
 namespace fb {
 	inline DXGI_FORMAT Convert(EDataFormat format) {
 		return (DXGI_FORMAT)format;
@@ -140,7 +141,7 @@ namespace fb {
 	inline 	D3D12_GRAPHICS_PIPELINE_STATE_DESC Convert(const FPSODesc& s)
 	{
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {
-			(ID3D12RootSignature*)s.pRootSignature,
+			((RootSignature*)s.pRootSignature.get())->RootSignature.Get(),
 			Convert(s.VS),
 			Convert(s.PS),
 			Convert(s.DS),

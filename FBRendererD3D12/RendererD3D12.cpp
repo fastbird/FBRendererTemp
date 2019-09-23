@@ -6,6 +6,8 @@
 #include "UploadBuffer.h"
 #include "Shader.h"
 #include "ConverterD3D12.h"
+#include "RootSignature.h"
+#include "../../FBCommon/StringHeader.h"
 
 using namespace fb;
 using Microsoft::WRL::ComPtr;
@@ -210,7 +212,7 @@ void RendererD3D12::Draw(float dt)
 		// *************
 		// TEST CODE
 		CommandList->SetPipelineState(PSOs.begin()->second.Get());
-		CommandList->SetGraphicsRootSignature(RootSignature.Get());
+		CommandList->SetGraphicsRootSignature(((RootSignature*)SimpleBoxRootSig.get())->RootSignature.Get());
 		ID3D12DescriptorHeap* descriptorHeaps[] = { DefaultCbvHeap.Get() };
 		CommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 		CommandList->SetGraphicsRootDescriptorTable(0, DefaultCbvHeap->GetGPUDescriptorHandleForHeapStart());
@@ -395,7 +397,7 @@ int RendererD3D12::GetBackbufferHeight() const
 	return GetClientHeight();
 }
 
-void RendererD3D12::BindPSO(PSOID id)
+void RendererD3D12::SetPipelineState(PSOID id)
 {
 	auto it = PSOs.find(id);
 	if (it != PSOs.end()) {
@@ -405,6 +407,22 @@ void RendererD3D12::BindPSO(PSOID id)
 	{
 		assert(0 && "PSO not found.");
 	}
+}
+
+void RendererD3D12::SetViewportAndScissor(int x, int y, UINT width, UINT height)
+{
+	D3D12_VIEWPORT viewport;
+	viewport.TopLeftX = 0;
+	viewport.TopLeftY = 0;
+	viewport.Width = static_cast<float>(width);
+	viewport.Height = static_cast<float>(height);
+	viewport.MinDepth = 0.0f;
+	viewport.MaxDepth = 1.0f;
+
+	D3D12_RECT rect = { 0, 0, (LONG)width, (LONG)height };
+
+	CommandList->RSSetViewports(1, &viewport);
+	CommandList->RSSetScissorRects(1, &rect);
 }
 
 void RendererD3D12::TempResetCommandList()
@@ -460,21 +478,23 @@ void RendererD3D12::TempCreateRootSignatureForSimpleBox()
 	}
 	ThrowIfFailed(hr);
 
+	SimpleBoxRootSig = new RootSignature;
+
 	ThrowIfFailed(Device->CreateRootSignature(
 		0,
 		serializedRootSig->GetBufferPointer(),
 		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(&RootSignature)));
+		IID_PPV_ARGS(((RootSignature*)SimpleBoxRootSig.get())->RootSignature.GetAddressOf())));
 }
 
-void* RendererD3D12::TempGetRootSignatureForSimpleBox()
+IRootSignatureIPtr RendererD3D12::TempGetRootSignatureForSimpleBox()
 {
-	return RootSignature.Get();
+	return SimpleBoxRootSig;
 }
 
-void RendererD3D12::TempBindRootSignature(fb::RootSignature rootSig)
+void RendererD3D12::TempBindRootSignature(IRootSignatureIPtr rootSig)
 {
-	CommandList->SetGraphicsRootSignature((ID3D12RootSignature*)rootSig);
+	CommandList->SetGraphicsRootSignature(((RootSignature*)rootSig.get())->RootSignature.Get());
 }
 
 void RendererD3D12::TempBindVertexBuffer(const IVertexBufferIPtr& vb)
@@ -491,9 +511,122 @@ void RendererD3D12::TempBindIndexBuffer(const IIndexBufferIPtr& ib)
 	CommandList->IASetIndexBuffer(&view);
 }
 
-void RendererD3D12::TempSetPrimitiveTopology(const fb::EPrimitiveTopology topology)
+void RendererD3D12::SetPrimitiveTopology(const fb::EPrimitiveTopology topology)
 {
 	CommandList->IASetPrimitiveTopology(Convert(topology));
+}
+
+IRootSignature* RendererD3D12::CreateRootSignature(const char* definition)
+{
+	auto parameters = fb::Split(definition, ";");
+
+	if (parameters.empty())
+		return nullptr;
+
+	CD3DX12_ROOT_PARAMETER* slotRootParameter = new CD3DX12_ROOT_PARAMETER[parameters.size()];
+	std::vector<CD3DX12_DESCRIPTOR_RANGE*> descriptorRanges;
+	int cpuIndex = 0;
+	// type, num, gpu index
+	for (const auto& param : parameters)
+	{
+		auto paramItem = fb::Split(param, ",");
+		if (paramItem[0] == std::string_view(RootDescriptorTableName))
+		{
+			assert(paramItem.size() == 3);
+			int numDescriptors = atoi(std::string(paramItem[1]).c_str());
+			int gpuIndex = atoi(std::string(paramItem[2]).c_str());
+			descriptorRanges.push_back(new CD3DX12_DESCRIPTOR_RANGE);
+			CD3DX12_DESCRIPTOR_RANGE* descriptorRange = descriptorRanges.back();
+			descriptorRange->Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, numDescriptors, gpuIndex);
+			slotRootParameter[cpuIndex].InitAsDescriptorTable(numDescriptors, descriptorRange);
+		}
+		else if (paramItem[0] == std::string_view(RootDescriptorCBVName))
+		{
+			int gpuIndex = atoi(std::string(paramItem[1]).c_str());
+			int registerSpace = 0;
+			if (paramItem.size() > 2)
+				registerSpace = atoi(std::string(paramItem[2]).c_str());
+
+			// TODO : shader visibility
+			slotRootParameter[cpuIndex].InitAsConstantBufferView(gpuIndex, registerSpace);
+		}
+		else if (paramItem[0] == std::string_view(RootDescriptorSRVName))
+		{
+			int gpuIndex = atoi(std::string(paramItem[1]).c_str());
+			int registerSpace = 0;
+			if (paramItem.size() > 2)
+				registerSpace = atoi(std::string(paramItem[2]).c_str());
+
+			// TODO : shader visibility
+			slotRootParameter[cpuIndex].InitAsShaderResourceView(gpuIndex, registerSpace);
+		}
+		else if (paramItem[0] == std::string_view(RootDescriptorUAVName))
+		{
+			int gpuIndex = atoi(std::string(paramItem[1]).c_str());
+			int registerSpace = 0;
+			if (paramItem.size() > 2)
+				registerSpace = atoi(std::string(paramItem[2]).c_str());
+
+			// TODO : shader visibility
+			slotRootParameter[cpuIndex].InitAsUnorderedAccessView(gpuIndex, registerSpace);
+		}
+		else if (paramItem[0] == std::string_view(RootConstantName))
+		{
+			assert(paramItem.size() >= 2);
+			int gpuIndex = atoi(std::string(paramItem[1]).c_str());
+			int numValues = atoi(std::string(paramItem[2]).c_str());
+			int registerSpace = 0;
+			if (paramItem.size() > 3)
+				registerSpace = atoi(std::string(paramItem[3]).c_str());
+			slotRootParameter[cpuIndex].InitAsConstants((UINT)numValues, gpuIndex, registerSpace);
+		}
+		++cpuIndex;
+	}
+
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc((UINT)parameters.size(), slotRootParameter, 0, nullptr,
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ComPtr<ID3DBlob> serializedRootSig = nullptr;
+	ComPtr<ID3DBlob> errorBlob = nullptr;
+	HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+
+	if (errorBlob != nullptr)
+	{
+		::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+	}
+	ThrowIfFailed(hr);
+
+	RootSignature* rs = new RootSignature();
+
+
+	ThrowIfFailed(Device->CreateRootSignature(
+		0,
+		serializedRootSig->GetBufferPointer(),
+		serializedRootSig->GetBufferSize(),
+		IID_PPV_ARGS(rs->RootSignature.GetAddressOf())));
+
+	delete[] slotRootParameter;
+	for (auto p : descriptorRanges) {
+		delete p;
+	}
+
+	return rs;
+}
+
+void RendererD3D12::SetGraphicsRoot32BitConstants(UINT RootParameterIndex, UINT Num32BitValuesToSet, 
+	const void* pSrcData, UINT DestOffsetIn32BitValues)
+{
+	CommandList->SetGraphicsRoot32BitConstants(RootParameterIndex, Num32BitValuesToSet, pSrcData, DestOffsetIn32BitValues);
+}
+
+void RendererD3D12::DrawInstanced(UINT VertexCountPerInstance,
+	UINT InstanceCount,
+	UINT StartVertexLocation,
+	UINT StartInstanceLocation)
+{
+	CommandList->DrawInstanced(VertexCountPerInstance,
+		InstanceCount, StartVertexLocation, StartInstanceLocation);
 }
 
 void RendererD3D12::TempBindRootDescriptorTable(UINT slot, ECBVHeapType type)
@@ -776,6 +909,11 @@ ComPtr<ID3D12Resource> RendererD3D12::CreateBufferInDefaultHeap(
 	PendingUploaderRemovalInfos.push_back(PendingUploaderRemovalInfo(uploadHeapBuffer));
 
 	return defaultHeapBuffer;
+}
+
+void RendererD3D12::Bind(ID3D12RootSignature* rootSig)
+{
+	CommandList->SetGraphicsRootSignature(rootSig);
 }
 
 void RendererD3D12::BuildDescriptorHeaps()

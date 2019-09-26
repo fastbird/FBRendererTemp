@@ -56,7 +56,7 @@ AxisRenderer::AxisRenderer(IRenderer* renderer, int x, int y, int width, int hei
 	glm::vec3 eyePos(0.f, 0.f, -5.0f);
 	glm::vec3 target(0, 0, 0);
 	auto View = glm::lookAt(eyePos, target, glm::vec3(0, 1, 0));
-	Proj = glm::perspectiveFov(0.25f * glm::pi<float>(), (float)Width, (float)Height, 1.0f, 1000.0f);
+	Proj = glm::perspectiveFov(0.5f * glm::pi<float>(), (float)Width, (float)Height, 1.0f, 1000.0f);
 	ViewProj = glm::transpose(Proj * View);
 }
 

@@ -30,34 +30,34 @@ AxisRenderer::AxisRenderer(IRenderer* renderer, int x, int y, int width, int hei
 	Vertex vertices[] = {
 		Vertex(0.f, 0.f, 0.f, 1.f, 0.f, 0.f),
 		Vertex(1.f, 0.f, 0.f, 1.f, 0.f, 0.f),
-		Vertex(0.0f, 0.f, 0.1f, 1.f, 0.f, 0.f),
-		Vertex(1.f, 0.f, 0.f, 1.f, 0.f, 0.f),
-		Vertex(0.0f, 0.f, -0.1f, 1.f, 0.f, 0.f),
-		Vertex(1.f, 0.f, 0.f, 1.f, 0.f, 0.f),
+		Vertex(0.0f, 0.f, 0.01f, 1.f, 0.f, 0.f),
+		Vertex(1.f, 0.f, 0.01f, 1.f, 0.f, 0.f),
+		Vertex(0.0f, 0.f, -0.01f, 1.f, 0.f, 0.f),
+		Vertex(1.f, 0.f, -0.01f, 1.f, 0.f, 0.f),
 
 
 		Vertex(0.f, 0.f, 0.f, 0.f, 1.f, 0.f),
 		Vertex(0.f, 1.f, 0.f, 0.f, 1.f, 0.f),
-		Vertex(0.1f, 0.0f, 0.f, 0.f, 1.f, 0.f),
-		Vertex(0.f, 1.f, 0.f, 0.f, 1.f, 0.f),
-		Vertex(-0.1f, 0.0f, 0.f, 0.f, 1.f, 0.f),
-		Vertex(0.f, 1.f, 0.f, 0.f, 1.f, 0.f),
+		Vertex(0.01f, 0.0f, 0.f, 0.f, 1.f, 0.f),
+		Vertex(0.01f, 1.f, 0.f, 0.f, 1.f, 0.f),
+		Vertex(-0.01f, 0.0f, 0.f, 0.f, 1.f, 0.f),
+		Vertex(-0.01f, 1.f, 0.f, 0.f, 1.f, 0.f),
 
 		Vertex(0.f, 0.f, 0.f, 0.f, 0.f, 1.f),
 		Vertex(0.f, 0.f, 1.f, 0.f, 0.f, 1.f),
-		Vertex(0.f, 0.1f, 0.f, 0.f, 0.f, 1.f),
-		Vertex(0.f, 0.f, 1.f, 0.f, 0.f, 1.f),
-		Vertex(0.f, -0.1f, 0.f, 0.f, 0.f, 1.f),
-		Vertex(0.f, 0.f, 1.f, 0.f, 0.f, 1.f),
+		Vertex(0.f, 0.01f, 0.f, 0.f, 0.f, 1.f),
+		Vertex(0.f, 0.01f, 1.f, 0.f, 0.f, 1.f),
+		Vertex(0.f, -0.01f, 0.f, 0.f, 0.f, 1.f),
+		Vertex(0.f, -0.01f, 1.f, 0.f, 0.f, 1.f),
 	};
 
 	VB = Renderer->CreateVertexBuffer(vertices, sizeof(Vertex) * ArrayCount(vertices), sizeof(Vertex), false);
 
 	glm::vec3 eyePos(0.f, 0.f, -5.0f);
 	glm::vec3 target(0, 0, 0);
-	auto viewMat = glm::lookAtLH(eyePos, target, glm::vec3(0, 1, 0));
-	auto projMat = glm::perspectiveFovLH(0.25f * glm::pi<float>(), (float)Width, (float)Height, 1.0f, 1000.0f);
-	ViewProj = glm::transpose(projMat * viewMat);
+	auto View = glm::lookAt(eyePos, target, glm::vec3(0, 1, 0));
+	Proj = glm::perspectiveFov(0.25f * glm::pi<float>(), (float)Width, (float)Height, 1.0f, 1000.0f);
+	ViewProj = glm::transpose(Proj * View);
 }
 
 void AxisRenderer::SetShaders(fb::IShaderIPtr vs, fb::IShaderIPtr ps)
@@ -90,10 +90,11 @@ void AxisRenderer::SetShaders(fb::IShaderIPtr vs, fb::IShaderIPtr ps)
 	PipelineStateId = Renderer->CreateGraphicsPipelineState(psoDesc);
 }
 
+void PrintMatrix(const char* name, const glm::mat4& mat);
 void AxisRenderer::SetViewMat(const glm::mat4& viewMat)
 {
-	auto projMat = glm::perspectiveFovLH(0.25f * glm::pi<float>(), (float)Width, (float)Height, 1.0f, 1000.0f);
-	ViewProj = glm::transpose(projMat * viewMat);
+	View = viewMat;
+	ViewProj = glm::transpose(Proj * viewMat);
 }
 
 void AxisRenderer::Render()
@@ -106,5 +107,19 @@ void AxisRenderer::Render()
 	VB->Bind(0);
 	Renderer->SetPrimitiveTopology(EPrimitiveTopology::LINELIST);
 	Renderer->SetGraphicsRoot32BitConstants(0, 16, &ViewProj, 0);
+	Renderer->DrawInstanced(VB->GetNumVertices(), 1, 0, 0);
+
+	auto t = glm::translate(glm::vec3(2.0f, 0.0f, 0.0f));
+	auto xt = glm::transpose(Proj * View * t);
+	Renderer->SetGraphicsRoot32BitConstants(0, 16, &xt, 0);
+	Renderer->DrawInstanced(VB->GetNumVertices(), 1, 0, 0);
+	t = glm::translate(glm::vec3( 0.0f, 4.0f, 0.0f ));
+	xt = glm::transpose(Proj * View * t);
+	Renderer->SetGraphicsRoot32BitConstants(0, 16, &xt, 0);
+	Renderer->DrawInstanced(VB->GetNumVertices(), 1, 0, 0);
+
+	t = glm::translate(glm::vec3(0.0f, 0.0f, 6.0f));
+	xt = glm::transpose(Proj * View * t);
+	Renderer->SetGraphicsRoot32BitConstants(0, 16, &xt, 0);
 	Renderer->DrawInstanced(VB->GetNumVertices(), 1, 0, 0);
 }

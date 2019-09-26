@@ -23,8 +23,9 @@ fb::IRenderer* gRenderer = nullptr;
 struct MeshGeometry* gBoxMesh = nullptr;
 struct MeshGeometry* FaceMesh = nullptr;
 
+// Expected initial eye coordinates is (0, 0, -10)
 float Radius = 10.0f;
-float Phi = 0;// -glm::half_pi<float>();
+float Phi = -glm::half_pi<float>();
 float Theta = glm::half_pi<float>();
 //float Phi = glm::four_over_pi<float>();
 //float Theta = 1.5f * glm::pi<float>();
@@ -223,7 +224,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
    gRenderer->TempCloseCommandList(true);
    
-   ProjMat = glm::perspectiveFovLH(0.25f * glm::pi<float>(), (float)clientWidth, (float)clientHeight, 1.0f, 1000.0f);
+   ProjMat = glm::perspectiveFov(0.25f * glm::pi<float>(), (float)clientWidth, (float)clientHeight, 1.0f, 1000.0f);
 
    return gRenderer != nullptr;
 }
@@ -290,7 +291,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			if (!Resizing)
 			{
 				gRenderer->OnResized();
-				ProjMat = glm::perspectiveFovLH(0.25f * glm::pi<float>(), (float)clientWidth, (float)clientHeight, 1.0f, 1000.0f);
+				ProjMat = glm::perspectiveFov(0.25f * glm::pi<float>(), (float)clientWidth, (float)clientHeight, 1.0f, 1000.0f);
 			}
 		}
 		return 0;
@@ -385,19 +386,41 @@ bool BuildBoxGeometry()
 	return gBoxMesh->IsValid();
 }
 
+void PrintMatrix(const char* name, const glm::mat4& mat)
+{
+	OutputDebugStringA("Mat ");
+	if (name)
+		OutputDebugStringA(name);
+	OutputDebugStringA("\n");
+	char buffer[255];
+	sprintf_s(buffer, "\t%.4f, %.4f, %.4f, %.4f\n", mat[0][0], mat[1][0], mat[2][0], mat[3][0]);
+	OutputDebugStringA(buffer);
+	sprintf_s(buffer, "\t%.4f, %.4f, %.4f, %.4f\n", mat[0][1], mat[1][1], mat[2][1], mat[3][1]);
+	OutputDebugStringA(buffer);
+	sprintf_s(buffer, "\t%.4f, %.4f, %.4f, %.4f\n", mat[0][2], mat[1][2], mat[2][2], mat[3][2]);
+	OutputDebugStringA(buffer);
+	sprintf_s(buffer, "\t%.4f, %.4f, %.4f, %.4f\n", mat[0][3], mat[1][3], mat[2][3], mat[3][3]);
+	OutputDebugStringA(buffer);
+	OutputDebugStringA("\n");
+}
+
 void Update(float dt)
 {
+	//Theta = 0.25 * glm::pi<float>();
+	//Phi = 0.25 * glm::pi<float>();
 	// theta : 0~pi  vertical
 	// phi : 0~2pi   horizontal
 	// Convert Spherical to Cartesian coordinates.
 	float x = Radius * sinf(Theta) * cosf(Phi);
-	float z = Radius * sinf(Theta) * sinf(Phi);
 	float y = Radius * cosf(Theta);
+	float z = Radius * sinf(Theta) * sinf(Phi);
+	
 
 	// Build the view matrix.
 	glm::vec3 eyePos(x, y, z);
 	glm::vec3 target(0, 0, 0);
-	ViewMat = glm::lookAtLH(eyePos, target, glm::vec3(0, 1, 0));
+	ViewMat = glm::lookAt(eyePos, target, glm::vec3(0, 1, 0));
+	//PrintMatrix("ViewMat", ViewMat);
 	if (gAxisRenderer) {
 		gAxisRenderer->SetViewMat(ViewMat);
 	}
@@ -425,8 +448,14 @@ void OnMouseMove(WPARAM btnState, int x, int y)
 		Theta += dy;
 		
 
-		// Restrict the angle mPhi.
 		Theta = glm::clamp(Theta, 0.1f, glm::pi<float>() - 0.1f);
+		char str[255];
+
+		sprintf_s(str, "Theta = %f\n", Theta);
+		OutputDebugStringA(str);
+		sprintf_s(str, "Phi = %f\n", Phi);
+		OutputDebugStringA(str);
+
 	}
 	else if ((btnState & MK_RBUTTON) != 0)
 	{

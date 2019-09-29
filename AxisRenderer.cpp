@@ -30,32 +30,32 @@ AxisRenderer::AxisRenderer(IRenderer* renderer, int x, int y, int width, int hei
 	Vertex vertices[] = {
 		Vertex(0.f, 0.f, 0.f, 1.f, 0.f, 0.f),
 		Vertex(1.f, 0.f, 0.f, 1.f, 0.f, 0.f),
-		Vertex(0.0f, 0.f, 0.01f, 1.f, 0.f, 0.f),
-		Vertex(1.f, 0.f, 0.01f, 1.f, 0.f, 0.f),
-		Vertex(0.0f, 0.f, -0.01f, 1.f, 0.f, 0.f),
-		Vertex(1.f, 0.f, -0.01f, 1.f, 0.f, 0.f),
+		Vertex(0.0f, 0.f, 0.05f, 1.f, 0.f, 0.f),
+		Vertex(1.f, 0.f, 0.05f, 1.f, 0.f, 0.f),
+		Vertex(0.0f, 0.f, -0.05f, 1.f, 0.f, 0.f),
+		Vertex(1.f, 0.f, -0.05f, 1.f, 0.f, 0.f),
 
 
 		Vertex(0.f, 0.f, 0.f, 0.f, 1.f, 0.f),
 		Vertex(0.f, 1.f, 0.f, 0.f, 1.f, 0.f),
-		Vertex(0.01f, 0.0f, 0.f, 0.f, 1.f, 0.f),
-		Vertex(0.01f, 1.f, 0.f, 0.f, 1.f, 0.f),
-		Vertex(-0.01f, 0.0f, 0.f, 0.f, 1.f, 0.f),
-		Vertex(-0.01f, 1.f, 0.f, 0.f, 1.f, 0.f),
+		Vertex(0.05f, 0.0f, 0.f, 0.f, 1.f, 0.f),
+		Vertex(0.05f, 1.f, 0.f, 0.f, 1.f, 0.f),
+		Vertex(-0.05f, 0.0f, 0.f, 0.f, 1.f, 0.f),
+		Vertex(-0.05f, 1.f, 0.f, 0.f, 1.f, 0.f),
 
 		Vertex(0.f, 0.f, 0.f, 0.f, 0.f, 1.f),
 		Vertex(0.f, 0.f, 1.f, 0.f, 0.f, 1.f),
-		Vertex(0.f, 0.01f, 0.f, 0.f, 0.f, 1.f),
-		Vertex(0.f, 0.01f, 1.f, 0.f, 0.f, 1.f),
-		Vertex(0.f, -0.01f, 0.f, 0.f, 0.f, 1.f),
-		Vertex(0.f, -0.01f, 1.f, 0.f, 0.f, 1.f),
+		Vertex(0.f, 0.05f, 0.f, 0.f, 0.f, 1.f),
+		Vertex(0.f, 0.05f, 1.f, 0.f, 0.f, 1.f),
+		Vertex(0.f, -0.05f, 0.f, 0.f, 0.f, 1.f),
+		Vertex(0.f, -0.05f, 1.f, 0.f, 0.f, 1.f),
 	};
 
 	VB = Renderer->CreateVertexBuffer(vertices, sizeof(Vertex) * ArrayCount(vertices), sizeof(Vertex), false);
 
 	glm::vec3 eyePos(0.f, 0.f, -5.0f);
 	glm::vec3 target(0, 0, 0);
-	auto View = glm::lookAt(eyePos, target, glm::vec3(0, 1, 0));
+	View = glm::lookAt(eyePos, target, glm::vec3(0, 1, 0));
 	Proj = glm::perspectiveFov(0.5f * glm::pi<float>(), (float)Width, (float)Height, 1.0f, 1000.0f);
 	ViewProj = glm::transpose(Proj * View);
 }
